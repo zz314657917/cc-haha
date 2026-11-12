@@ -62,7 +62,7 @@ describe('Electron tray service', () => {
       const quit = vi.fn()
 
       const controller = await installTray({
-        app: { name: 'Claude Code Haha' } as never,
+        app: { name: '落叶AI' } as never,
         desktopRoot: root,
         show,
         quit,
@@ -79,14 +79,14 @@ describe('Electron tray service', () => {
 
       expect(trayMocks.createFromPath).toHaveBeenCalledWith(iconPath)
       expect(trayMocks.Tray).toHaveBeenCalledTimes(1)
-      expect(trayMocks.tray.setToolTip).toHaveBeenCalledWith('Claude Code Haha')
+      expect(trayMocks.tray.setToolTip).toHaveBeenCalledWith('落叶AI')
       expect(trayMocks.buildFromTemplate).toHaveBeenCalledTimes(1)
 
       const template = trayMocks.buildFromTemplate.mock.calls[0]?.[0] as Array<{ label?: string, click?: () => void, type?: string }>
       expect(template.map(item => item.label ?? item.type)).toEqual([
-        'Show Claude Code Haha',
+        'Show 落叶AI',
         'separator',
-        'Quit Claude Code Haha',
+        'Quit 落叶AI',
       ])
 
       template[0]?.click?.()
@@ -98,6 +98,32 @@ describe('Electron tray service', () => {
 
       controller.dispose()
       expect(trayMocks.tray.destroy).toHaveBeenCalledTimes(1)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('falls back to the 落叶AI name for the tooltip when Electron reports none', async () => {
+    const root = mkdtempSync(path.join(tmpdir(), 'electron-tray-fallback-'))
+    try {
+      const trayMocks = createElectronTrayMocks()
+      const iconPath = path.join(root, 'src-tauri', 'icons', 'icon.png')
+      mkdirSync(path.dirname(iconPath), { recursive: true })
+      writeFileSync(iconPath, 'png')
+
+      await installTray({
+        app: { name: '' } as never,
+        desktopRoot: root,
+        show: vi.fn(),
+        quit: vi.fn(),
+        electronRuntime: {
+          Menu: { buildFromTemplate: trayMocks.buildFromTemplate },
+          Tray: trayMocks.Tray.mockImplementation(() => trayMocks.tray),
+          nativeImage: { createFromPath: trayMocks.createFromPath },
+        } as never,
+      })
+
+      expect(trayMocks.tray.setToolTip).toHaveBeenCalledWith('落叶AI')
     } finally {
       rmSync(root, { recursive: true, force: true })
     }

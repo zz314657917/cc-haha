@@ -4,14 +4,22 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useUpdateStore } from '@/stores/updateStore'
 import { settingsApi } from '@/api/settings'
-import { AboutSettings } from './AboutSettings'
+import { browserHost } from '@/lib/desktopHost/browserHost'
+import { AboutSettings, AboutUpdatesSection } from './AboutSettings'
 
 const initialSettingsState = useSettingsStore.getState()
 const initialUpdateState = useUpdateStore.getState()
 
 async function renderAboutSettings() {
   render(<AboutSettings />)
-  await screen.findByText((_, node) => node?.tagName === 'SPAN' && node.textContent === '版本 0.1.0')
+  await screen.findByText('版本 0.1.0')
+}
+
+// The update controls are hidden in this build (APP_UPDATES_ENABLED is off),
+// but they are kept working for a future 落叶AI update feed.
+async function renderUpdatesSection() {
+  render(<AboutUpdatesSection version="0.1.0" />)
+  await screen.findByText('0.1.0')
 }
 
 beforeEach(async () => {
@@ -39,14 +47,13 @@ afterEach(() => {
 })
 
 it('shows automatic updates enabled by default with the scope of the setting', async () => {
-  await renderAboutSettings()
+  await renderUpdatesSection()
   expect(screen.getByRole('switch', { name: '自动更新' })).toBeChecked()
   expect(screen.getByText('自动检查新版本并在后台下载；关闭后仍可手动检查与安装。')).toBeInTheDocument()
-  await screen.findByText((_, node) => node?.tagName === 'SPAN' && node.textContent === '版本 0.1.0')
 })
 
 it('saves automatic updates off and back on through the settings API', async () => {
-  await renderAboutSettings()
+  await renderUpdatesSection()
   const toggle = screen.getByRole('switch', { name: '自动更新' })
   fireEvent.click(toggle)
   await waitFor(() => expect(toggle).not.toBeChecked())
@@ -62,7 +69,7 @@ it('saves automatic updates off and back on through the settings API', async () 
 it('disables the switch until saving finishes', async () => {
   let finishSave: (result: { ok: true }) => void = () => {}
   vi.mocked(settingsApi.updateUser).mockImplementationOnce(() => new Promise(resolve => { finishSave = resolve }))
-  await renderAboutSettings()
+  await renderUpdatesSection()
   const toggle = screen.getByRole('switch', { name: '自动更新' })
   fireEvent.click(toggle)
   expect(toggle).toBeDisabled()
@@ -74,7 +81,7 @@ it('disables the switch until saving finishes', async () => {
 
 it('surfaces a failed save and restores the previous automatic update setting', async () => {
   vi.mocked(settingsApi.updateUser).mockRejectedValueOnce(new Error('fixture save failed'))
-  await renderAboutSettings()
+  await renderUpdatesSection()
   const toggle = screen.getByRole('switch', { name: '自动更新' })
   fireEvent.click(toggle)
   expect(await screen.findByRole('alert')).toHaveTextContent('自动更新设置保存失败：fixture save failed')
@@ -85,7 +92,7 @@ it('surfaces a failed save and restores the previous automatic update setting', 
 it('keeps manual checking and installing available while automatic updates are off', async () => {
   useSettingsStore.setState({ autoUpdateEnabled: false })
   useUpdateStore.setState({ status: 'downloaded', availableVersion: '0.2.0' })
-  await renderAboutSettings()
+  await renderUpdatesSection()
   expect(screen.getByRole('switch', { name: '自动更新' })).not.toBeChecked()
   expect(useUpdateStore.getState().initialize).not.toHaveBeenCalled()
   const check = screen.getByRole('button', { name: '检查更新' })
@@ -97,27 +104,55 @@ it('keeps manual checking and installing available while automatic updates are o
   expect(useUpdateStore.getState().checkForUpdates).toHaveBeenCalledOnce()
   expect(useUpdateStore.getState().installUpdate).toHaveBeenCalledOnce()
   expect(screen.getByText('更新已下载。点击「安装并重启」后应用新版。')).toBeInTheDocument()
-  await screen.findByText((_, node) => node?.tagName === 'SPAN' && node.textContent === '版本 0.1.0')
 })
 
-it('opens the group QR in a dialog instead of pushing it below the fold', async () => {
+it('names the product 落叶AI and links to the 落叶AI website', async () => {
+  const open = vi.spyOn(browserHost.shell, 'open').mockResolvedValue(undefined)
   await renderAboutSettings()
-  // The version arrives from an async host call; let it settle so the assertion
-  // is not racing a state update.
-  await screen.findByText((_, node) => node?.tagName === 'SPAN' && node.textContent === '版本 0.1.0')
 
-  const entry = screen.getByRole('button', { name: /加入 cc-haha 交流群/ })
-  expect(entry.compareDocumentPosition(screen.getByRole('button', { name: /反馈问题/ })) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy()
-  expect(entry).toHaveAttribute('aria-haspopup', 'dialog')
-  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  expect(screen.getByText('落叶AI')).toBeInTheDocument()
+  expect(screen.queryByText('Claude Code Haha')).not.toBeInTheDocument()
 
-  fireEvent.click(entry)
+  fireEvent.click(screen.getByRole('button', { name: /落叶AI 官网/ }))
+  expect(open).toHaveBeenCalledWith('https://cn-api.3zapi.com')
+})
 
-  const dialog = screen.getByRole('dialog', { name: '加入 cc-haha 交流群' })
-  const qr = screen.getByRole('img', { name: 'cc-haha 企业微信用户群二维码' })
-  expect(dialog).toContainElement(qr)
-  expect(qr).toHaveAttribute('src', expect.stringContaining('icons/wechat-group-qr.png'))
+// The cc-haha license (section 4) requires a visible attribution with a working
+// link on the About page, and a notice that this build is modified and unofficial.
+it('shows the upstream attribution and the unofficial-modification notice', async () => {
+  const open = vi.spyOn(browserHost.shell, 'open').mockResolvedValue(undefined)
+  await renderAboutSettings()
 
-  fireEvent.click(screen.getByRole('button', { name: 'Close dialog' }))
-  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  const attribution = screen.getByRole('button', { name: /Based on cc-haha: https:\/\/github\.com\/NanmiCoder\/cc-haha/ })
+  expect(attribution).toHaveTextContent('Copyright (c) 2026 cc-haha')
+  fireEvent.click(attribution)
+  expect(open).toHaveBeenCalledWith('https://github.com/NanmiCoder/cc-haha')
+
+  const notice = screen.getByText(/cc-haha 的修改版，非官方发行版本/)
+  expect(notice).toHaveTextContent('内置落叶AI 服务商')
+  expect(notice).toHaveTextContent('首次启动 API Key 设置')
+  expect(notice).toHaveTextContent('余额显示')
+  expect(notice).toHaveTextContent('品牌更名')
+})
+
+it('drops the upstream promotion rows: star, issues, community group, changelog, author and social links', async () => {
+  await renderAboutSettings()
+
+  expect(screen.queryByText('NanmiCoder/cc-haha')).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: /反馈问题/ })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: /交流群/ })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: '更新日志' })).not.toBeInTheDocument()
+  expect(screen.queryByText('程序员阿江-Relakkes')).not.toBeInTheDocument()
+})
+
+// The upstream feed is NanmiCoder/cc-haha's GitHub Releases; an install from
+// it would replace this fork. The page must neither offer nor start a check.
+it('hides the update controls and never starts an update check', async () => {
+  await renderAboutSettings()
+
+  expect(screen.queryByText('应用更新')).not.toBeInTheDocument()
+  expect(screen.queryByRole('switch', { name: '自动更新' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: '检查更新' })).not.toBeInTheDocument()
+  expect(useUpdateStore.getState().initialize).not.toHaveBeenCalled()
+  expect(useUpdateStore.getState().checkForUpdates).not.toHaveBeenCalled()
 })

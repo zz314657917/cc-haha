@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import '@testing-library/jest-dom'
 
 import { DesktopSettings as Settings } from '../pages/Settings'
+import { AboutUpdatesSection } from '../pages/settings/AboutSettings'
 import { useSettingsStore } from '../stores/settingsStore'
 import { useUIStore } from '../stores/uiStore'
 import { useUpdateStore } from '../stores/updateStore'
@@ -3855,7 +3856,7 @@ describe('Settings > About tab', () => {
     useUpdateStore.setState({
       status: 'available',
       availableVersion: '0.1.5',
-      releaseNotes: '# Claude Code Haha v0.1.5\n\n- Fixed updater rendering\n- Added markdown support',
+      releaseNotes: '# 落叶AI v0.1.5\n\n- Fixed updater rendering\n- Added markdown support',
       progressPercent: 0,
       downloadedBytes: 0,
       totalBytes: null,
@@ -3869,10 +3870,23 @@ describe('Settings > About tab', () => {
     })
   })
 
-  it('renders release notes with markdown formatting', async () => {
+  // This build hides the update controls (APP_UPDATES_ENABLED is off): the
+  // only feed is upstream cc-haha's, and installing it would replace 落叶AI.
+  it('keeps the update controls off the About page', async () => {
     render(<Settings />)
 
-    expect(await screen.findByRole('heading', { name: 'Claude Code Haha v0.1.5' })).toBeInTheDocument()
+    expect(await screen.findByText('Source and license')).toBeInTheDocument()
+    expect(screen.queryByText('App Updates')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Advanced update proxy/i })).not.toBeInTheDocument()
+    expect(useUpdateStore.getState().initialize).not.toHaveBeenCalled()
+  })
+
+  // The tests below render the hidden section on its own so it keeps working
+  // for a future 落叶AI update feed.
+  it('renders release notes with markdown formatting', async () => {
+    render(<AboutUpdatesSection version="0.1.0" />)
+
+    expect(await screen.findByRole('heading', { name: '落叶AI v0.1.5' })).toBeInTheDocument()
     expect(screen.getByText('Fixed updater rendering')).toBeInTheDocument()
     expect(screen.getByText('Added markdown support')).toBeInTheDocument()
   })
@@ -3909,15 +3923,21 @@ describe('Settings > About tab', () => {
 
     render(<Settings />)
 
+    expect(await screen.findByText('Source and license')).toBeInTheDocument()
+    await waitFor(() => expect(window.desktopHost?.app.getVersion).toHaveBeenCalled())
+    expect(screen.queryByText(/0\.1\.0/)).not.toBeInTheDocument()
+    cleanup()
+
+    // The version the page could not read reaches the update section as ''.
+    render(<AboutUpdatesSection version="" />)
     expect(await screen.findByText('Unknown')).toBeInTheDocument()
-    expect(screen.queryByText('0.1.0')).not.toBeInTheDocument()
   })
 
   it('shows downloaded bytes instead of a fake zero percent when total size is unknown', async () => {
     useUpdateStore.setState({
       status: 'downloading',
       availableVersion: '0.1.5',
-      releaseNotes: '# Claude Code Haha v0.1.5',
+      releaseNotes: '# 落叶AI v0.1.5',
       progressPercent: 0,
       downloadedBytes: 1536,
       totalBytes: null,
@@ -3930,14 +3950,14 @@ describe('Settings > About tab', () => {
       dismissPrompt: vi.fn(),
     })
 
-    render(<Settings />)
+    render(<AboutUpdatesSection version="0.1.0" />)
 
     expect(await screen.findByText('Downloading update... 1.5 KB downloaded')).toBeInTheDocument()
     expect(screen.queryByText('Downloading update... 0%')).not.toBeInTheDocument()
   })
 
   it('saves a manual update proxy from the advanced update controls', async () => {
-    render(<Settings />)
+    render(<AboutUpdatesSection version="0.1.0" />)
 
     fireEvent.click(screen.getByRole('button', { name: /Advanced update proxy/i }))
     expect(screen.getByRole('radio', { name: /System proxy/i })).toHaveAttribute('aria-checked', 'true')
@@ -3971,7 +3991,7 @@ describe('Settings > About tab', () => {
     useSettingsStore.setState({
       updateProxy: { mode: 'manual', url: 'http://127.0.0.1:7890' },
     })
-    render(<Settings />)
+    render(<AboutUpdatesSection version="0.1.0" />)
 
     fireEvent.click(screen.getByRole('button', { name: /Advanced update proxy/i }))
     expect(screen.getByRole('radio', { name: /Manual proxy/i })).toHaveAttribute('aria-checked', 'true')

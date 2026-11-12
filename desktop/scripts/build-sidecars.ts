@@ -244,6 +244,11 @@ async function compileExecutable({
     compile: {
       target: bunTarget,
       outfile: outfileBase,
+      // Offline/flaky-network builds can point at a pre-downloaded Bun runtime
+      // for the target instead of letting `bun build` fetch it.
+      ...(process.env.CC_HAHA_BUN_COMPILE_EXECUTABLE?.trim()
+        ? { executablePath: process.env.CC_HAHA_BUN_COMPILE_EXECUTABLE.trim() }
+        : {}),
       autoloadTsconfig: true,
       autoloadPackageJson: true,
       // No hideConsole: it makes a GUI-subsystem binary, and the sidecar must

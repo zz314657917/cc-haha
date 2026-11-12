@@ -1,18 +1,19 @@
 {
-  "name": "claude-code-desktop",
+  "name": "luoyeai-desktop",
+  "productName": "LuoyeAI",
   "private": true,
   "version": "0.7.8",
-  "description": "Desktop coding agent workbench for Claude Code Haha.",
-  "homepage": "https://github.com/NanmiCoder/cc-haha",
+  "description": "落叶AI desktop client. Based on cc-haha (https://github.com/NanmiCoder/cc-haha); unofficial modified version.",
+  "homepage": "https://cn-api.3zapi.com",
   "author": {
-    "name": "NanmiCoder",
-    "email": "relakkes@gmail.com"
+    "name": "落叶AI"
   },
   "type": "module",
   "main": "electron-dist/main.cjs",
   "build": {
-    "appId": "com.claude-code-haha.desktop",
-    "productName": "Claude Code Haha",
+    "appId": "com.luoyeai.desktop",
+    "productName": "LuoyeAI",
+    "copyright": "Copyright (c) 2026 落叶AI. Based on cc-haha, Copyright (c) 2026 cc-haha.",
     "asar": true,
     "asarUnpack": [
       "dist/**",
@@ -58,10 +59,10 @@
         "claude-sidecar-[^/]+$"
       ],
       "notarize": true,
-      "artifactName": "Claude-Code-Haha-${version}-macOS-${arch}-update.${ext}"
+      "artifactName": "LuoyeAI-${version}-macOS-${arch}-update.${ext}"
     },
     "dmg": {
-      "artifactName": "Claude-Code-Haha-${version}-macOS-${arch}.${ext}"
+      "artifactName": "LuoyeAI-${version}-macOS-${arch}.${ext}"
     },
     "win": {
       "target": "nsis",
@@ -74,7 +75,9 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "include": "build/installer.nsh",
-      "artifactName": "Claude-Code-Haha-${version}-Windows-${arch}-Setup.${ext}"
+      "shortcutName": "落叶AI",
+      "uninstallDisplayName": "落叶AI ${version}",
+      "artifactName": "LuoyeAI-${version}-Windows-${arch}-Setup.${ext}"
     },
     "linux": {
       "target": [
@@ -83,16 +86,9 @@
       ],
       "icon": "src-tauri/icons",
       "category": "Development",
-      "maintainer": "NanmiCoder <relakkes@gmail.com>",
-      "artifactName": "Claude-Code-Haha-${version}-Linux-${arch}.${ext}"
-    },
-    "publish": [
-      {
-        "provider": "github",
-        "owner": "NanmiCoder",
-        "repo": "cc-haha"
-      }
-    ]
+      "maintainer": "落叶AI",
+      "artifactName": "LuoyeAI-${version}-Linux-${arch}.${ext}"
+    }
   },
   "scripts": {
     "dev": "vite",

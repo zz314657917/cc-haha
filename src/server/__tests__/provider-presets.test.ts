@@ -504,6 +504,49 @@ describe('provider presets API', () => {
   })
 
   /**
+   * 落叶AI (a sub2api gateway) serves Claude over /v1/messages and GPT over
+   * /v1/responses on the same host with one key. The record's OpenAI format
+   * forces the local proxy, which is where the claude- rule sends Claude models
+   * back to the Messages API; anything else (GPT) stays on Responses.
+   */
+  describe('落叶AI preset', () => {
+    const luoyeai = PROVIDER_PRESETS.find((preset) => preset.id === 'luoyeai')!
+
+    test('offers the Hong Kong and US nodes with Hong Kong as the default', () => {
+      expect(luoyeai.deprecated).toBeUndefined()
+      expect(luoyeai.needsApiKey).toBe(true)
+      expect(luoyeai.baseUrl).toBe('https://cn-api.3zapi.com/v1')
+      expect(luoyeai.regionalEndpoints).toEqual([
+        { region: 'hk', baseUrl: 'https://cn-api.3zapi.com/v1' },
+        { region: 'us', baseUrl: 'https://ai.3zapi.com/v1' },
+      ])
+    })
+
+    test('routes Claude to Messages and GPT to Responses through the proxy', () => {
+      expect(providerNeedsProxy(luoyeai.apiFormat, undefined)).toBe(true)
+      expect(resolveModelApiFormat(luoyeai.modelApiFormats, 'claude-opus-5-5')).toBe('anthropic')
+      expect(resolveModelApiFormat(luoyeai.modelApiFormats, 'gpt-6-sol') ?? luoyeai.apiFormat).toBe('openai_responses')
+    })
+
+    test('turns on OpenAI-compatible image generation with the provider key', () => {
+      const env = buildProviderManagedEnv({
+        id: 'luoyeai-test', presetId: luoyeai.id, name: luoyeai.name,
+        baseUrl: 'https://ai.3zapi.com/v1', apiFormat: luoyeai.apiFormat,
+        authStrategy: luoyeai.authStrategy, apiKey: 'fake-luoyeai-key',
+        models: luoyeai.defaultModels, imageGeneration: luoyeai.defaultImageGeneration,
+      })
+      expect(env).toMatchObject({
+        ANTHROPIC_BASE_URL: 'http://127.0.0.1:3456/proxy',
+        ANTHROPIC_MODEL: 'claude-opus-5-5',
+        CC_HAHA_IMAGE_PROTOCOL: 'openai_images',
+        CC_HAHA_IMAGE_MODEL: 'gpt-image-2.6-sunburst',
+        CC_HAHA_IMAGE_BASE_URL: 'https://ai.3zapi.com/v1',
+        CC_HAHA_IMAGE_API_KEY: 'fake-luoyeai-key',
+      })
+    })
+  })
+
+  /**
    * OpenCode Go binds the wire format to the URL path and does no translation, so
    * these three facts are what make the provider work at all: an OpenAI format on
    * the record (otherwise the CLI bypasses the proxy and the per-model routing

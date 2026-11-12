@@ -280,3 +280,20 @@ export type MagpieState = {
 }
 
 export type OpenMagpieResult = { ok: boolean; unsupported?: boolean }
+
+/** Remaining credit on a sub2api gateway (落叶AI). Upstream failures arrive as `ok: false`. */
+export type ProviderBalance =
+  | {
+    ok: true
+    kind: 'balance' | 'quota' | 'subscription'
+    remaining: number | null
+    limit?: number
+    unit: string
+    planName?: string
+    todayCost?: number
+  }
+  | {
+    ok: false
+    errorCode: 'auth-failed' | 'unsupported' | 'network' | 'unknown'
+    message: string
+  }

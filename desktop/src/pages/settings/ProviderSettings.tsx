@@ -83,6 +83,8 @@ import { ModelIdCombobox } from '../../components/settings/ModelIdCombobox'
 import { ProviderRequestCompatibilityFields } from '@/components/settings/ProviderRequestCompatibilityFields'
 import { compatibilityForm, invalidCompatibilityNumber, parseCompatibilityForm, parseAnthropicBudgetForm, pickOutputBudget, readCompatibilityEditorJson, writeCompatibilityJson, type RequestCompatibilityForm } from '../../lib/providerRequestCompatibility'
 import { ProviderImageGenerationFields, type ImageGenerationFormValue } from '../../components/settings/ProviderImageGenerationFields'
+import { ProviderBalanceBadge } from '../../components/settings/ProviderBalanceBadge'
+import { isLuoyeAiProvider } from '../../lib/luoyeAiSetup'
 import { BUILT_IN_PROVIDER_IDS, CLAUDE_OFFICIAL_PROVIDER_ID, OPENAI_OFFICIAL_PROVIDER_ID } from '../../constants/openaiOfficialProvider'
 import { GROK_OFFICIAL_PROVIDER_ID } from '../../constants/grokOfficialProvider'
 import { DEEPSEEK_ACCOUNT_PROVIDER_ID } from '../../constants/deepseekAccountProvider'
@@ -526,6 +528,7 @@ export function ProviderSettings({ browserMode = false }: { browserMode?: boolea
               <Badge tone="neutral">{preset.name}</Badge>
             )}
             {formatBadge && <Badge tone="warning">{formatBadge}</Badge>}
+            {isLuoyeAiProvider(provider) && <ProviderBalanceBadge providerId={provider.id} />}
             {isActive && (
               <Badge tone="brand">{t('settings.providers.default')}</Badge>
             )}
@@ -1687,7 +1690,11 @@ function ProviderFormModal({ open, onClose, mode, provider, presets, initialPres
       ? t('settings.providers.regionChina')
       : endpoint.region === 'global_en'
         ? t('settings.providers.regionGlobal')
-        : endpoint.region,
+        : endpoint.region === 'hk'
+          ? t('luoyeAi.regionHk')
+          : endpoint.region === 'us'
+            ? t('luoyeAi.regionUs')
+            : endpoint.region,
     description: endpoint.baseUrl,
     icon: endpoint.region === 'cn_zh'
       ? <MapPin size={16} strokeWidth={1.75} aria-hidden="true" />
@@ -1721,6 +1728,21 @@ function ProviderFormModal({ open, onClose, mode, provider, presets, initialPres
     },
   ]
   const selectedApiFormatLabel = apiFormatItems.find((item) => item.value === apiFormat)?.label ?? t('settings.providers.apiFormatAnthropic')
+  // A per-model preset has no single protocol: name the one each mapped model
+  // actually routes to, instead of the fallback only unmatched models use.
+  const perModelApiFormats = presetDrivesApiFormat
+    ? [...new Set(
+        Object.values(models)
+          .map((modelId) => modelId?.trim())
+          .filter((modelId): modelId is string => Boolean(modelId))
+          .map((modelId) => resolveModelApiFormat(selectedPreset.modelApiFormats, modelId) ?? selectedPreset.apiFormat),
+      )]
+    : []
+  const perModelApiFormatLabel = perModelApiFormats.length > 0
+    ? perModelApiFormats
+      .map((format) => apiFormatItems.find((item) => item.value === format)?.label ?? t('settings.providers.apiFormatAnthropic'))
+      .join(' + ')
+    : selectedApiFormatLabel
   const authStrategyItems = [
     {
       value: 'auth_token' as const,
@@ -2409,8 +2431,11 @@ function ProviderFormModal({ open, onClose, mode, provider, presets, initialPres
         ) : (
           <div className="flex flex-col gap-1">
             <span className={FORM_FIELD_LABEL}>{t('settings.providers.apiFormat')}</span>
-            <div className="rounded-[var(--radius-md)] bg-[var(--color-surface-container)] px-3 py-2 text-xs text-[var(--color-text-secondary)]">
-              {selectedApiFormatLabel}
+            <div
+              data-testid="provider-per-model-api-format"
+              className="rounded-[var(--radius-md)] bg-[var(--color-surface-container)] px-3 py-2 text-xs text-[var(--color-text-secondary)]"
+            >
+              {perModelApiFormatLabel}
             </div>
             <p className={FORM_HINT}>{t('settings.providers.apiFormatPerModelHint')}</p>
           </div>

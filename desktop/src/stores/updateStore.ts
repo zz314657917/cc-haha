@@ -15,6 +15,16 @@ export type UpdateStatus =
   | 'restarting'
   | 'error'
 
+/**
+ * 落叶AI is a fork: the update feed baked into the upstream build is
+ * NanmiCoder/cc-haha's GitHub Releases, and installing one of those would
+ * overwrite this client with upstream cc-haha. Until the fork ships its own
+ * feed, the renderer never starts a check (UpdateChecker and the About page
+ * read this flag) and the Electron host answers every check with "no update"
+ * (`UPDATES_ENABLED` in electron/main.ts).
+ */
+export const APP_UPDATES_ENABLED = false
+
 type CheckOptions = {
   silent?: boolean
   autoDownload?: boolean

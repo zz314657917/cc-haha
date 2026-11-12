@@ -42,6 +42,20 @@ describe('Electron notification smoke hook', () => {
     expect(NotificationClass).not.toHaveBeenCalled()
   })
 
+  it('titles the smoke notification 落叶AI when no title is given', () => {
+    const { NotificationClass } = fakeNotificationClass()
+
+    expect(scheduleNotificationSmoke({
+      env: { CC_HAHA_ELECTRON_NOTIFICATION_SMOKE_SESSION_ID: 'session-smoke' },
+      NotificationClass,
+      onAction: vi.fn(),
+      setTimer: (handler: () => void) => handler(),
+      writeLog: vi.fn(),
+    })).toBe(true)
+
+    expect(NotificationClass).toHaveBeenCalledWith(expect.objectContaining({ title: '落叶AI notification smoke' }))
+  })
+
   it('schedules a targeted notification for Computer Use smoke validation', () => {
     const timer = vi.fn((handler: () => void) => handler())
     const { NotificationClass, handlers, show } = fakeNotificationClass()

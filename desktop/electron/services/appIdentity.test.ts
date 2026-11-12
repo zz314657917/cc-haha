@@ -27,6 +27,12 @@ describe('applyWindowsAppUserModelId', () => {
     const pkg = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as { build?: { appId?: string } }
     expect(WINDOWS_APP_USER_MODEL_ID).toBe(pkg.build?.appId)
   })
+
+  it('does not share its Windows identity with an upstream cc-haha install', () => {
+    // Same AppUserModelID or appId would group both apps on one taskbar button
+    // and let one installer treat the other as an older version to replace.
+    expect(WINDOWS_APP_USER_MODEL_ID).not.toBe('com.claude-code-haha.desktop')
+  })
 })
 
 describe('Windows window and pinned taskbar identity', () => {
@@ -34,7 +40,7 @@ describe('Windows window and pinned taskbar identity', () => {
     const root = mkdtempSync(path.join(tmpdir(), 'electron-app-identity-'))
     const desktopRoot = path.join(root, 'resources', 'app.asar')
     const resourcesPath = path.join(root, 'resources')
-    const executablePath = path.join(root, 'Claude Code Haha.exe')
+    const executablePath = path.join(root, 'LuoyeAI.exe')
     const externalIcon = path.join(resourcesPath, 'app-icon.ico')
     const bundledIcon = path.join(desktopRoot, 'src-tauri', 'icons', 'icon.ico')
     const write = (file: string) => {
@@ -57,7 +63,7 @@ describe('Windows window and pinned taskbar identity', () => {
         appIconPath: f.externalIcon,
         appIconIndex: 0,
         relaunchCommand: `"${f.executablePath}"`,
-        relaunchDisplayName: 'Claude Code Haha',
+        relaunchDisplayName: '落叶AI',
       })
     } finally {
       rmSync(f.root, { recursive: true, force: true })

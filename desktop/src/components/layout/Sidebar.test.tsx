@@ -714,10 +714,8 @@ describe('Sidebar', () => {
   })
 
   it('keeps every control in the title region clickable on the drag region', async () => {
-    // Only controls inside a drag region are no-drag now, so the rule has to
-    // name every kind the titlebars hold — the repository link here is an <a>,
-    // not a button, and dropping `a` from the rule would let a press on it
-    // drag the window instead.
+    // Only controls inside a drag region are no-drag now, so every button the
+    // titlebar holds must opt out, or a press on it drags the window instead.
     const root = document.body.appendChild(document.createElement('div'))
     root.id = 'root'
     render(<Sidebar />, { container: root })
@@ -725,7 +723,6 @@ describe('Sidebar', () => {
     const titleRegion = screen.getByTestId('sidebar-title-region')
     expect(resolveAppRegion(titleRegion)).toBe('drag')
     const controls = Array.from(titleRegion.querySelectorAll('a, button'))
-    expect(controls.some((control) => control.tagName === 'A')).toBe(true)
     expect(controls.some((control) => control.tagName === 'BUTTON')).toBe(true)
     for (const control of controls) {
       expect(resolveAppRegion(control), control.outerHTML).toBe('no-drag')
@@ -877,8 +874,15 @@ describe('Sidebar', () => {
 
     const region = screen.getByTestId('sidebar-title-region')
 
-    expect(region).toHaveTextContent('cc-haha')
+    expect(region).toHaveTextContent('落叶AI')
     expect(region).not.toHaveTextContent('Claude Code')
+    expect(region).not.toHaveTextContent('cc-haha')
+  })
+
+  it('carries no upstream GitHub link in the header', () => {
+    render(<Sidebar />)
+
+    expect(screen.getByTestId('sidebar-title-region').querySelector('a[href*="github.com"]')).toBeNull()
   })
 
   it('groups sessions by project and expands overflow rows', () => {
@@ -2594,12 +2598,11 @@ describe('Sidebar', () => {
   it('shows the brand mark only on the rail, where the wordmark is clamped away', async () => {
     render(<Sidebar />)
 
-    // Scope to the wordmark's own row — the GitHub link in the same header is
-    // also an svg and would answer a looser query.
-    const brandRow = () => screen.getByText('haha').closest('div')
+    // Scope to the wordmark's own row so other header icons cannot answer the query.
+    const brandRow = () => screen.getByText('AI').closest('div')
 
     // Expanded, the name carries the brand and the mark beside it is clutter.
-    expect(brandRow()?.querySelector('svg')).toBeNull()
+    expect(brandRow()?.querySelector('img')).toBeNull()
 
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Collapse sidebar' }))
@@ -2607,7 +2610,7 @@ describe('Sidebar', () => {
 
     // Collapsed, the copy is width-clamped to zero, so the mark is the only
     // thing left to identify the app.
-    expect(brandRow()?.querySelector('svg')).not.toBeNull()
+    expect(brandRow()?.querySelector('img')).not.toBeNull()
   })
 
   it('renders search controls without the removed embedded project filter', () => {

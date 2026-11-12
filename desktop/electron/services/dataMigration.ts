@@ -112,6 +112,8 @@ export class DataMigration {
   private abort: AbortController | null = null
   private activeId: string | null = null
   get sourceDir(): string { return path.resolve(this.env.CLAUDE_CONFIG_DIR || systemClaudeConfigDir(this.app)) }
+  // 落叶AI's managed default root keeps its global .claude.json inside the root,
+  // not in the home directory, so it is never a home-adjacent source.
   get sourceDefault(): boolean { return !this.env.CLAUDE_CONFIG_DIR }
   private readonly journalPath: string
   private readonly modePath: string
@@ -129,7 +131,7 @@ export class DataMigration {
     if (this.running) throw new Error('Data migration is already running')
     this.previewState = null
     this.previewDirectories = undefined
-    if (this.env.CLAUDE_CONFIG_DIR && this.env.CC_HAHA_APP_PORTABLE_DIR !== '1') throw new Error('CLAUDE_CONFIG_DIR is controlled by the launch environment')
+    if (this.env.CLAUDE_CONFIG_DIR && this.env.CC_HAHA_APP_PORTABLE_DIR !== '1' && this.env.CC_HAHA_APP_DEFAULT_DIR !== '1') throw new Error('CLAUDE_CONFIG_DIR is controlled by the launch environment')
     const target = normalizedCustomDir(this.app, targetDir)
     const sourceReal = await canonicalPath(this.sourceDir)
     const targetReal = await canonicalPath(target)
@@ -421,7 +423,7 @@ export class DataMigration {
     if (parsed.status.stage === 'completed') {
       // A disconnected migrated disk must not be recreated as an empty store.
       // An explicit launch override still selects its own independent store.
-      if (this.env.CLAUDE_CONFIG_DIR && this.env.CC_HAHA_APP_PORTABLE_DIR !== '1' &&
+      if (this.env.CLAUDE_CONFIG_DIR && this.env.CC_HAHA_APP_PORTABLE_DIR !== '1' && this.env.CC_HAHA_APP_DEFAULT_DIR !== '1' &&
         path.relative(path.resolve(this.env.CLAUDE_CONFIG_DIR), parsed.status.targetDir) !== '') return 'normal'
       let mode: { mode?: string; portable_dir?: string }
       try { mode = JSON.parse(await fs.readFile(this.modePath, 'utf8')) } catch (error) {

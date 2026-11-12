@@ -299,6 +299,19 @@ describe('Electron application menu service', () => {
     expect(send).toHaveBeenCalledWith(ELECTRON_EVENT_CHANNELS.nativeMenuNavigate, 'settings')
   })
 
+  it('names the app menu 落叶AI when Electron reports no app name', async () => {
+    const menuMocks = getElectronMenuMocks()
+    menuMocks.buildFromTemplate.mockClear()
+
+    await installApplicationMenu({ name: '' } as never, () => null, 'darwin')
+
+    const template = menuMocks.buildFromTemplate.mock.calls[0]?.[0] as MenuItemConstructorOptions[]
+    expect(template[0]?.label).toBe('落叶AI')
+    const labels = (template[0]?.submenu as MenuItemConstructorOptions[]).map(item => item.label)
+    expect(labels).toContain('About 落叶AI')
+    expect(labels.some(label => label?.includes('Claude Code Haha'))).toBe(false)
+  })
+
   it('clears the native application menu on Windows so custom chrome owns the top bar', async () => {
     const menuMocks = getElectronMenuMocks()
     menuMocks.buildFromTemplate.mockClear()

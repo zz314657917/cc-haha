@@ -43,7 +43,7 @@ const LANGUAGE_NEUTRAL: Record<string, string[]> = {
   'components/chat/MermaidRenderer.tsx': ['mermaid'], // the diagram language, as a code block labels it
   'components/chat/ToolCallBlock.tsx': ['bash', 'powershell'], // shell names, as a code block labels them
   'components/layout/H5ConnectionView.tsx': ['https://chat.example.com'], // example URL
-  'components/layout/Sidebar.tsx': ['cc-', 'haha', 'GitHub'], // wordmark, brand
+  'components/layout/Sidebar.tsx': ['落叶', 'AI'], // wordmark, brand
   'components/market/FrontmatterPanel.tsx': ['true', 'false'], // YAML values, shown as written
   'components/market/InstallConfirmDialog.tsx': ['…/skills/'], // a path
   'components/market/MarketSkillDetail.tsx': ['SKILL.md'], // a file name
@@ -54,8 +54,8 @@ const LANGUAGE_NEUTRAL: Record<string, string[]> = {
   'pages/Connectors.tsx': ['MCP', 'CLI'], // transport names
   'components/search/GlobalSearchModal.tsx': ['esc'], // the key, as printed on its keycap
   'pages/MemorySettings.tsx': ['Markdown'], // file format
-  'pages/settings/AboutSettings.tsx': [ // product, repository and author; example proxy
-    'Claude Code Haha', 'GitHub', 'NanmiCoder/cc-haha', '程序员阿江-Relakkes', 'http://127.0.0.1:7890',
+  'pages/settings/AboutSettings.tsx': [ // product name; the upstream license's verbatim attribution; example proxy
+    '落叶AI', 'Based on cc-haha: https://github.com/NanmiCoder/cc-haha', 'http://127.0.0.1:7890',
   ],
   'pages/settings/ChatAppearanceSettings.tsx': ['px', '${}px'], // unit
   'pages/settings/GeneralSettings.tsx': ['http://127.0.0.1:7890', 'tvly-...'], // example proxy, key format

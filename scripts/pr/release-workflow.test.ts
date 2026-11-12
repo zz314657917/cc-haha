@@ -324,10 +324,10 @@ describe('release desktop workflow', () => {
     }
 
     expect(desktopPackage.description).toBeTruthy()
-    expect(desktopPackage.homepage).toBe('https://github.com/NanmiCoder/cc-haha')
-    expect(desktopPackage.author?.name).toBe('NanmiCoder')
-    expect(desktopPackage.author?.email).toBe('relakkes@gmail.com')
-    expect(desktopPackage.build?.linux?.maintainer).toBe('NanmiCoder <relakkes@gmail.com>')
+    expect(desktopPackage.description).toContain('Based on cc-haha')
+    expect(desktopPackage.homepage).toBe('https://cn-api.3zapi.com')
+    expect(desktopPackage.author?.name).toBe('落叶AI')
+    expect(desktopPackage.build?.linux?.maintainer).toBe('落叶AI')
   })
 
   test('release workflow requires macOS Gatekeeper launch approval for signed builds', () => {

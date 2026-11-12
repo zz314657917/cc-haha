@@ -2378,7 +2378,7 @@ function buildAgentCompletionNotification(
   const lastAssistant = [...messages].reverse().find((message) => message.type === 'assistant_text')
   const suffix = preview.length > AGENT_COMPLETION_NOTIFICATION_PREVIEW_CHARS ? '...' : ''
   return {
-    title: 'Claude Code Haha 已完成回复',
+    title: '落叶AI 已完成回复',
     body: preview.slice(0, AGENT_COMPLETION_NOTIFICATION_PREVIEW_CHARS) + suffix,
     dedupeKey: `agent-completion:${sessionId}:${lastAssistant?.id ?? Date.now()}`,
   }
@@ -5662,7 +5662,7 @@ export const useChatStore = create<ChatStore>((setState, get) => {
           dedupeKey: `permission:${msg.requestId}`,
           cooldownScope: 'permission-prompt',
           requestAttention: true,
-          title: 'Claude Code Haha 需要你的确认',
+          title: '落叶AI 需要你的确认',
           body: msg.displayName && msg.toolName
             ? `${msg.displayName} 请求使用 ${msg.toolName}，正在等待允许。`
             : msg.toolName
@@ -5730,7 +5730,7 @@ export const useChatStore = create<ChatStore>((setState, get) => {
           dedupeKey: `computer-use-permission:${msg.requestId}`,
           cooldownScope: 'permission-prompt',
           requestAttention: true,
-          title: 'Claude Code Haha 需要你的确认',
+          title: '落叶AI 需要你的确认',
           body: msg.request.reason || 'Computer Use 正在等待允许。',
           target: { type: 'session', sessionId },
         })

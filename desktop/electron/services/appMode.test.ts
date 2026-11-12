@@ -58,21 +58,40 @@ describe('Electron app mode service', () => {
     expect(JSON.parse(fs.readFileSync(path.join(fakeApp.getPath('userData'), 'app-mode.json'), 'utf8')))
       .toMatchObject({ mode: 'portable', portable_dir: selected, future: { preserve: true } })
   })
-  it('always uses ~/.claude in system mode and ignores app-adjacent legacy data at runtime', () => {
+  it('defaults to its own ~/.luoyeai root, never the shared ~/.claude, and ignores app-adjacent legacy data', () => {
     const fakeApp = app()
     const legacyDir = path.join(path.dirname(fakeApp.getPath('exe')), 'CLAUDE_CONFIG_DIR')
     fs.mkdirSync(legacyDir, { recursive: true })
     fs.writeFileSync(path.join(legacyDir, 'settings.json'), '{"legacy":true}')
+    const defaultDir = path.join(fakeApp.root, 'home', '.luoyeai')
 
-    expect(systemClaudeConfigDir(fakeApp)).toBe(path.join(fakeApp.root, 'home', '.claude'))
+    expect(systemClaudeConfigDir(fakeApp)).toBe(defaultDir)
     expect(determineStartupPortableDir(fakeApp, {})).toBeNull()
-    expect(applyStartupPortableMode(fakeApp, {})).toBeNull()
-    expect(getAppMode(fakeApp, {})).toEqual({
-      mode: 'default',
-      portableDir: null,
-      activeConfigDir: path.join(fakeApp.root, 'home', '.claude'),
-      configDirSource: 'system',
-    })
+    const env: NodeJS.ProcessEnv = {}
+    expect(applyStartupPortableMode(fakeApp, env)).toBeNull()
+    // Exported so the sidecar and CLI, which fall back to ~/.claude when the
+    // variable is unset, land in the same isolated root.
+    expect(env).toEqual({ CLAUDE_CONFIG_DIR: defaultDir, CC_HAHA_APP_DEFAULT_DIR: '1' })
+    expect(fs.existsSync(defaultDir)).toBe(true)
+    for (const probe of [{}, env]) {
+      expect(getAppMode(fakeApp, probe)).toEqual({
+        mode: 'default',
+        portableDir: null,
+        activeConfigDir: defaultDir,
+        configDirSource: 'system',
+      })
+    }
+  })
+
+  it('lets the user switch away from the app-managed default root', () => {
+    const fakeApp = app()
+    const env: NodeJS.ProcessEnv = {}
+    applyStartupPortableMode(fakeApp, env)
+    const selected = path.join(fakeApp.root, 'picked')
+    expect(() => setAppMode(fakeApp, { mode: 'portable', portableDir: selected }, env)).not.toThrow()
+
+    clearAppManagedPortableEnv(env)
+    expect(env).toEqual({})
   })
 
   it('activates only an explicit absolute custom directory persisted in userData', () => {
@@ -145,7 +164,7 @@ describe('Electron app mode service', () => {
     expect(externalEnv).toEqual({ CLAUDE_CONFIG_DIR: customDir })
   })
 
-  it('drops inherited app-managed env so switching back to ~/.claude survives relaunch', () => {
+  it('drops inherited app-managed env so switching back to the default root survives relaunch', () => {
     const fakeApp = app()
     writeMode(fakeApp, { mode: 'default', portable_dir: null })
     const oldCustomDir = path.join(fakeApp.root, 'old-custom')
@@ -156,7 +175,8 @@ describe('Electron app mode service', () => {
     }
 
     expect(applyStartupPortableMode(fakeApp, env)).toBeNull()
-    expect(env.CLAUDE_CONFIG_DIR).toBeUndefined()
+    expect(env.CLAUDE_CONFIG_DIR).toBe(systemClaudeConfigDir(fakeApp))
+    expect(env.CC_HAHA_APP_DEFAULT_DIR).toBe('1')
     expect(env.CC_HAHA_APP_PORTABLE_DIR).toBeUndefined()
     expect(env.WEBVIEW2_USER_DATA_FOLDER).toBeUndefined()
     expect(getAppMode(fakeApp, env)).toMatchObject({

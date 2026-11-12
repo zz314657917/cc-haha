@@ -20,6 +20,7 @@
  * PUT    /api/providers/:id/models       — update built-in OAuth model mapping
  * POST   /api/providers/official         — activate official (clear env)
  * POST   /api/providers/:id/test         — test a saved provider
+ * GET    /api/providers/:id/balance      — remaining balance (落叶AI / sub2api only)
  * POST   /api/providers/test             — test unsaved config
  */
 
@@ -45,6 +46,7 @@ import {
   toCcSwitchScanResult,
 } from '../services/ccSwitchImport.js'
 import { fetchProviderModels } from '../services/providerModelCatalog.js'
+import { fetchProviderBalance } from '../services/providerBalance.js'
 
 const providerService = new ProviderService()
 
@@ -202,6 +204,14 @@ export async function handleProvidersApi(
         return Response.json({ models, modelContextWindows })
       }
       throw methodNotAllowed(req.method)
+    }
+
+    // /api/providers/:id/balance
+    if (action === 'balance') {
+      if (req.method !== 'GET') throw methodNotAllowed(req.method)
+      const provider = await providerService.getProvider(id)
+      // Upstream failures are reported as 200 + { ok: false }, like testProvider.
+      return Response.json({ balance: await fetchProviderBalance(provider) })
     }
 
     // /api/providers/:id/test

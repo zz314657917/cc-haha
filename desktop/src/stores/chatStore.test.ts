@@ -10126,7 +10126,7 @@ describe('chatStore history mapping', () => {
       dedupeKey: 'permission:perm-ask-1',
       cooldownScope: 'permission-prompt',
       requestAttention: true,
-      title: 'Claude Code Haha 需要你的确认',
+      title: '落叶AI 需要你的确认',
       body: 'AskUserQuestion 请求执行，正在等待允许。',
       target: { type: 'session', sessionId: TEST_SESSION_ID },
     })
@@ -14030,7 +14030,7 @@ describe('chatStore history mapping', () => {
     ]))
     // The desktop notification previews the same reply the transcript shows.
     expect(notifyDesktopMock).toHaveBeenCalledWith(expect.objectContaining({
-      title: 'Claude Code Haha 已完成回复',
+      title: '落叶AI 已完成回复',
       body: expect.stringContaining('alpha 任务完成'),
     }))
 
@@ -14872,7 +14872,7 @@ describe('chatStore history mapping', () => {
       dedupeKey: 'computer-use-permission:cu-1',
       cooldownScope: 'permission-prompt',
       requestAttention: true,
-      title: 'Claude Code Haha 需要你的确认',
+      title: '落叶AI 需要你的确认',
       body: 'Open Finder and inspect a file',
       target: { type: 'session', sessionId: TEST_SESSION_ID },
     })
@@ -15778,7 +15778,7 @@ describe('chatStore history mapping', () => {
 
     expect(notifyDesktopMock).toHaveBeenCalledWith(expect.objectContaining({
       cooldownScope: 'agent-completion',
-      title: 'Claude Code Haha 已完成回复',
+      title: '落叶AI 已完成回复',
       body: '结果 修复完成 bun test 已通过',
       target: { type: 'session', sessionId: TEST_SESSION_ID },
     }))

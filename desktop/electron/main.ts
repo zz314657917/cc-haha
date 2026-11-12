@@ -29,7 +29,7 @@ import { workspaceBrowserMenuPosition } from './services/workspaceBrowserMenu'
 import type { WorkspaceBrowserMenuOptions } from '../src/lib/desktopHost/types'
 import { acquireSingleInstanceLock } from './services/singleInstance'
 import { installTray, shouldInstallTray, type TrayController } from './services/tray'
-import { ElectronUpdaterService, updaterSessionProxyConfig } from './services/updater'
+import { ElectronUpdaterService, updaterSessionProxyConfig, type ElectronUpdaterLike } from './services/updater'
 import { createUpdateSmokeUpdaterFromEnv } from './services/updateSmoke'
 import { ElectronTerminalService, type TerminalSpawnInput } from './services/terminal'
 import { ElectronPreviewService, type PreviewBounds } from './services/preview'
@@ -385,8 +385,37 @@ function resolveMainRendererServerAccess(): PreviewLocalAccess | null {
     : null
 }
 
+// 落叶AI is a fork, and the only feed electron-updater could reach is upstream
+// NanmiCoder/cc-haha's GitHub Releases: installing one would replace this client
+// with upstream cc-haha. With updates off, every check answers "no update" and
+// electron-updater's `autoUpdater` is never touched, so it never loads a feed.
+// The renderer mirrors this with APP_UPDATES_ENABLED in src/stores/updateStore.ts.
+const UPDATES_ENABLED = false
+
+const disabledUpdater: ElectronUpdaterLike = {
+  autoDownload: false,
+  autoInstallOnAppQuit: false,
+  async checkForUpdates() {
+    return null
+  },
+  async downloadUpdate() {
+    throw new Error('App updates are disabled in this build')
+  },
+  quitAndInstall() {},
+  on() {
+    return disabledUpdater
+  },
+  off() {
+    return disabledUpdater
+  },
+}
+
 function getUpdaterService() {
   const smokeUpdater = createUpdateSmokeUpdaterFromEnv(process.env)
+  if (!UPDATES_ENABLED && !smokeUpdater) {
+    updaterService ??= new ElectronUpdaterService(disabledUpdater)
+    return updaterService
+  }
   updaterService ??= new ElectronUpdaterService(smokeUpdater ?? autoUpdater, {
     async apply(proxy) {
       // Update traffic runs on electron-updater's own session partition;

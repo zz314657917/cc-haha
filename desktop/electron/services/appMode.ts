@@ -15,8 +15,15 @@ type PersistedAppModeConfig = {
   portable_dir?: string | null
 }
 
+/**
+ * 落叶AI keeps its own default data root instead of the shared `~/.claude`, so
+ * it can run beside an upstream cc-haha or Claude Code install without the two
+ * reading each other's providers, sessions and settings.
+ */
+export const DEFAULT_DATA_DIR_NAME = '.luoyeai'
+
 export function systemClaudeConfigDir(app: AppModeAppLike): string {
-  return path.join(app.getPath('home'), '.claude')
+  return path.join(app.getPath('home'), DEFAULT_DATA_DIR_NAME)
 }
 
 function readAppModeConfig(configDir: string): PersistedAppModeConfig | null {
@@ -100,19 +107,25 @@ export function normalizedCustomDir(app: AppModeAppLike, value: string | null | 
   return normalized
 }
 
-function externallyControlled(env: NodeJS.ProcessEnv): boolean {
-  return Boolean(env.CLAUDE_CONFIG_DIR && env.CC_HAHA_APP_PORTABLE_DIR !== '1')
+/** A CLAUDE_CONFIG_DIR this app exported itself, as opposed to one the launch environment set. */
+function appManagedConfigDir(env: NodeJS.ProcessEnv): boolean {
+  return env.CC_HAHA_APP_PORTABLE_DIR === '1' || env.CC_HAHA_APP_DEFAULT_DIR === '1'
 }
 
-// The app-managed portable selection is process-local derived state; the
-// persisted app-mode.json stays the source of truth. Strip it before this
-// environment reaches another process (app.relaunch(), the NSIS installer
-// spawned by quitAndInstall()), otherwise the child would trust a snapshot
-// that may no longer match the persisted mode (#1160).
+function externallyControlled(env: NodeJS.ProcessEnv): boolean {
+  return Boolean(env.CLAUDE_CONFIG_DIR && !appManagedConfigDir(env))
+}
+
+// The app-managed data root is process-local derived state; the persisted
+// app-mode.json stays the source of truth. Strip it before this environment
+// reaches another process (app.relaunch(), the NSIS installer spawned by
+// quitAndInstall()), otherwise the child would trust a snapshot that may no
+// longer match the persisted mode (#1160).
 export function clearAppManagedPortableEnv(env: NodeJS.ProcessEnv = process.env): void {
-  if (env.CC_HAHA_APP_PORTABLE_DIR !== '1') return
+  if (env.CC_HAHA_APP_PORTABLE_DIR !== '1' && env.CC_HAHA_APP_DEFAULT_DIR !== '1') return
   delete env.CLAUDE_CONFIG_DIR
   delete env.CC_HAHA_APP_PORTABLE_DIR
+  delete env.CC_HAHA_APP_DEFAULT_DIR
   delete env.WEBVIEW2_USER_DATA_FOLDER
 }
 
@@ -144,7 +157,16 @@ export function applyStartupPortableMode(
     return null
   }
   const customDir = determineStartupPortableDir(app, env)
-  if (!customDir) return null
+  if (!customDir) {
+    // Default mode still exports the root: the sidecar, the CLI and every host
+    // service fall back to ~/.claude when CLAUDE_CONFIG_DIR is unset, which is
+    // exactly the directory an upstream install owns.
+    const defaultDir = systemClaudeConfigDir(app)
+    fs.mkdirSync(defaultDir, { recursive: true })
+    env.CLAUDE_CONFIG_DIR = defaultDir
+    env.CC_HAHA_APP_DEFAULT_DIR = '1'
+    return null
+  }
 
   const webViewDataDir = path.join(customDir, 'EBWebView')
   fs.mkdirSync(webViewDataDir, { recursive: true })
@@ -158,10 +180,10 @@ export function getAppMode(
   app: AppModeAppLike,
   env: NodeJS.ProcessEnv = process.env,
 ): AppModeConfig {
-  const envConfigDir = env.CLAUDE_CONFIG_DIR
+  const envConfigDir = env.CLAUDE_CONFIG_DIR && env.CC_HAHA_APP_DEFAULT_DIR !== '1'
     ? normalizedCustomDir(app, env.CLAUDE_CONFIG_DIR)
     : null
-  const persistedCustomDir = envConfigDir ? null : determineStartupPortableDir(app, env)
+  const persistedCustomDir = envConfigDir ? null : determineStartupPortableDir(app, {})
   const customDir = envConfigDir || persistedCustomDir
   if (customDir) {
     return {

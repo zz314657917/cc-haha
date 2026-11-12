@@ -6,7 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { DataMigration, MIGRATION_JOURNAL_FILE, type DataMigrationHooks } from './dataMigration'
-import type { AppModeAppLike } from './appMode'
+import { DEFAULT_DATA_DIR_NAME, type AppModeAppLike } from './appMode'
 import { resolveRelocatedAttachmentPath } from '../../../src/utils/storageRelocations'
 import { assertMigrationManifest, migrationManifest, validateMigrationManifest } from './dataMigrationFiles'
 import { preflightWindowsMigrationPermissions, preserveWindowsMigrationPermissions, restrictWindowsMigrationStaging } from './migrationPermissions'
@@ -18,7 +18,8 @@ async function fixture() {
   const root = await fs.mkdtemp(path.join(await fs.realpath(os.tmpdir()), 'haha-migration-'))
   roots.push(root)
   const home = path.join(root, 'home')
-  const source = path.join(home, '.claude')
+  // The app's default root (see systemClaudeConfigDir), which is what an unset CLAUDE_CONFIG_DIR resolves to.
+  const source = path.join(home, DEFAULT_DATA_DIR_NAME)
   const target = path.join(root, '新数据 directory')
   const userData = path.join(root, 'profile')
   await fs.mkdir(source, { recursive: true })

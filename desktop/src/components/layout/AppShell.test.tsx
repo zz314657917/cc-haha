@@ -166,6 +166,10 @@ vi.mock('@/components/layout/UpdateChecker', () => ({
   UpdateChecker: () => <div>updates loaded</div>,
 }))
 
+vi.mock('./LuoyeAiSetupDialog', () => ({
+  LuoyeAiSetupDialog: () => <div>luoyeai setup mounted</div>,
+}))
+
 import { AppShell } from './AppShell'
 
 describe('AppShell boot flow', () => {
@@ -237,6 +241,7 @@ describe('AppShell boot flow', () => {
     expect(screen.getByText('tabs loaded')).toBeInTheDocument()
     expect(screen.getByText('content loaded')).toBeInTheDocument()
     expect(screen.getByText('updates loaded')).toBeInTheDocument()
+    expect(screen.getByText('luoyeai setup mounted')).toBeInTheDocument()
   })
 
   it('keeps the last real session as Settings project context', async () => {

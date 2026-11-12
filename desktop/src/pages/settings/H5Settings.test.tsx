@@ -114,7 +114,7 @@ it('creates a provider using the existing form and reports save errors without l
   render(<ProviderSettings browserMode />)
   fireEvent.click(screen.getByRole('button', { name: /Add Model/ }))
   const dialog = within(screen.getByRole('dialog'))
-  fireEvent.change(dialog.getByPlaceholderText('sk-...'), { target: { value: 'fake-test-key' } })
+  fireEvent.change(dialog.getAllByPlaceholderText('sk-...')[0]!, { target: { value: 'fake-test-key' } })
   fireEvent.click(dialog.getByRole('button', { name: 'Add' }))
   await waitFor(() => expect(create).toHaveBeenCalled())
   expect(await dialog.findByRole('alert')).toHaveTextContent('The action failed. Please retry.')

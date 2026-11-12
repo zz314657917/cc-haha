@@ -7,8 +7,63 @@ import { browserHost } from '../../lib/desktopHost/browserHost'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { useUpdateStore } from '../../stores/updateStore'
 
+// The shipped build has updates off (APP_UPDATES_ENABLED). The prompt's own
+// behaviour is still covered with the switch on, so it keeps working if the
+// fork ever gets an update feed of its own.
+const updateFlags = vi.hoisted(() => ({ enabled: true }))
+const realUpdateActions = (() => {
+  const { initialize, checkForUpdates, downloadUpdate, installUpdate, dismissPrompt } = useUpdateStore.getState()
+  return { initialize, checkForUpdates, downloadUpdate, installUpdate, dismissPrompt }
+})()
+vi.mock('../../stores/updateStore', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../stores/updateStore')>()
+  return {
+    ...actual,
+    get APP_UPDATES_ENABLED() {
+      return updateFlags.enabled
+    },
+  }
+})
+
+describe('UpdateChecker with updates disabled (the shipped build)', () => {
+  beforeEach(() => {
+    updateFlags.enabled = false
+    useSettingsStore.setState({ locale: 'en', autoUpdateEnabled: true })
+    window.desktopHost = {
+      ...browserHost,
+      kind: 'electron',
+      isDesktop: true,
+      capabilities: { ...browserHost.capabilities, updates: true },
+    }
+  })
+
+  it('ships with app updates turned off', async () => {
+    const actual = await vi.importActual<typeof import('../../stores/updateStore')>('../../stores/updateStore')
+    expect(actual.APP_UPDATES_ENABLED).toBe(false)
+  })
+
+  it('never starts an update check and renders nothing, even with a downloaded update', () => {
+    const initialize = vi.fn().mockResolvedValue(undefined)
+    const checkForUpdates = vi.fn().mockResolvedValue(null)
+    useUpdateStore.setState({
+      status: 'downloaded',
+      availableVersion: '9.9.9',
+      shouldPrompt: true,
+      initialize,
+      checkForUpdates,
+    })
+
+    const { container } = render(<UpdateChecker />)
+
+    expect(initialize).not.toHaveBeenCalled()
+    expect(checkForUpdates).not.toHaveBeenCalled()
+    expect(container).toBeEmptyDOMElement()
+  })
+})
+
 describe('UpdateChecker', () => {
   beforeEach(() => {
+    updateFlags.enabled = true
     useSettingsStore.setState({ locale: 'en', autoUpdateEnabled: true })
     Reflect.deleteProperty(window, '__TAURI__')
     window.desktopHost = {
@@ -24,7 +79,7 @@ describe('UpdateChecker', () => {
     useUpdateStore.setState({
       status: 'available',
       availableVersion: '0.1.5',
-      releaseNotes: '# Claude Code Haha v0.1.5\n\n[Release notes](https://example.com/releases/v0.1.5)',
+      releaseNotes: '# 落叶AI v0.1.5\n\n[Release notes](https://example.com/releases/v0.1.5)',
       progressPercent: 0,
       downloadedBytes: 0,
       totalBytes: null,
@@ -45,7 +100,7 @@ describe('UpdateChecker', () => {
 
     expect(screen.getByText('Update ready')).toBeInTheDocument()
     expect(screen.getByText('v0.1.5 has been downloaded. Click “Install and restart” to apply it.')).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Claude Code Haha v0.1.5' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '落叶AI v0.1.5' })).toBeInTheDocument()
 
     const link = screen.getByRole('link', { name: 'Release notes' })
     expect(link).toHaveAttribute('href', 'https://example.com/releases/v0.1.5')
@@ -98,7 +153,7 @@ describe('UpdateChecker', () => {
     useUpdateStore.setState({
       status: 'downloading',
       availableVersion: '0.1.5',
-      releaseNotes: '# Claude Code Haha v0.1.5',
+      releaseNotes: '# 落叶AI v0.1.5',
       progressPercent: 0,
       downloadedBytes: 1536,
       totalBytes: null,
@@ -177,12 +232,13 @@ describe('UpdateChecker', () => {
       },
     }
 
-    vi.resetModules()
-    const { UpdateChecker: FreshUpdateChecker } = await import('./UpdateChecker')
-    const { useUpdateStore: freshUpdateStore } = await import('../../stores/updateStore')
-    const { useSettingsStore: freshSettingsStore } = await import('../../stores/settingsStore')
-    freshSettingsStore.setState({ locale: 'en' })
+    // The mocked store module survives vi.resetModules(), so restore the real
+    // actions (beforeEach replaced them with spies) instead of re-importing.
+    const FreshUpdateChecker = UpdateChecker
+    const freshUpdateStore = useUpdateStore
+    useSettingsStore.setState({ locale: 'en' })
     freshUpdateStore.setState({
+      ...realUpdateActions,
       status: 'idle',
       availableVersion: null,
       releaseNotes: null,

@@ -778,6 +778,40 @@ describe('default provider settings ownership', () => {
 })
 
 /**
+ * 落叶AI serves Claude on /messages and GPT on /responses under one key. The
+ * read-only format field used to name only the fallback (Responses), even while
+ * every mapped model was a Claude model that actually goes out on Messages.
+ */
+describe('落叶AI per-model protocol display', () => {
+  beforeEach(() => {
+    useSettingsStore.setState({ locale: 'en' })
+    vi.spyOn(useSettingsStore.getState(), 'fetchAll').mockResolvedValue()
+    vi.spyOn(providersApi, 'list').mockResolvedValue({ providers: [], activeId: null })
+    vi.spyOn(providersApi, 'getSettings').mockResolvedValue({})
+  })
+
+  afterEach(() => {
+    cleanup()
+    vi.restoreAllMocks()
+  })
+
+  it('names the protocol the mapped models really use, and both once GPT is mapped', async () => {
+    render(<ProviderSettings />)
+    fireEvent.click(await screen.findByRole('button', { name: /Add Model/ }))
+    const dialog = within(screen.getByRole('dialog'))
+    fireEvent.click(dialog.getByRole('button', { name: '落叶AI' }))
+
+    const format = dialog.getByTestId('provider-per-model-api-format')
+    expect(format).toHaveTextContent('Anthropic Messages')
+    expect(format).not.toHaveTextContent('Responses')
+
+    fireEvent.change(dialog.getByLabelText(/Haiku/, { selector: 'input' }), { target: { value: 'gpt-6-luna' } })
+    expect(format).toHaveTextContent('Anthropic Messages')
+    expect(format).toHaveTextContent('OpenAI Responses')
+  })
+})
+
+/**
  * OpenCode Go is the first provider whose wire format depends on the model rather
  * than the record, so what the user has to do — and what they must not have to do
  * — is part of the contract, not just cosmetics.

@@ -15,6 +15,7 @@ import type {
   ModelMapping,
   MagpieState,
   OpenMagpieResult,
+  ProviderBalance,
 } from '../types/provider'
 
 type ProvidersResponse = { providers: SavedProvider[]; activeId: string | null }
@@ -97,6 +98,11 @@ export const providersApi = {
 
   reorder(orderedIds: string[]) {
     return api.put<ProvidersReorderResponse>('/api/providers/reorder', { orderedIds })
+  },
+
+  /** Upstream failures are reported as HTTP 200 with `ok: false`. */
+  balance(id: string) {
+    return api.get<{ balance: ProviderBalance }>(`/api/providers/${id}/balance`)
   },
 
   test(id: string, overrides?: { modelId?: string }) {

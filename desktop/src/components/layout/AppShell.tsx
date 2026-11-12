@@ -5,6 +5,7 @@ import { Sidebar } from './Sidebar'
 import { ContentRouter } from './ContentRouter'
 import { ToastContainer } from '@/components/layout/Toast'
 import { UpdateChecker } from '@/components/layout/UpdateChecker'
+import { LuoyeAiSetupDialog } from './LuoyeAiSetupDialog'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { useUIStore, type SettingsTab } from '../../stores/uiStore'
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts'
@@ -282,6 +283,7 @@ export function AppShell() {
       </main>
       <ToastContainer />
       <UpdateChecker />
+      <LuoyeAiSetupDialog />
       <TaskEditorHost />
     </div>
   )
