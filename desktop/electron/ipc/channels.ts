@@ -1,4 +1,12 @@
 export const ELECTRON_IPC_CHANNELS = {
+  accountGetStatus: 'desktop:account:get-status',
+  accountBeginLogin: 'desktop:account:begin-login',
+  accountCancelLogin: 'desktop:account:cancel-login',
+  accountSignOut: 'desktop:account:sign-out',
+  accountGetProfile: 'desktop:account:get-profile',
+  accountListAnnouncements: 'desktop:account:list-announcements',
+  accountMarkAnnouncementRead: 'desktop:account:mark-announcement-read',
+  accountMarkAllAnnouncementsRead: 'desktop:account:mark-all-announcements-read',
   publicAccessGetStatus: 'desktop:public-access:get-status',
   publicAccessConfigure: 'desktop:public-access:configure',
   publicAccessStart: 'desktop:public-access:start',

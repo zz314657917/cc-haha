@@ -32,7 +32,7 @@ const TEXT_ATTRIBUTE = /^(?:title|alt|placeholder|label|content|aria-(?:label|de
 const KEYWORD_ATTRIBUTES = new Set(['enterKeyHint'])
 
 /** Elements whose text is code, a key cap or a style sheet rather than prose. */
-const NON_PROSE_ELEMENTS = new Set(['kbd', 'Keycap', 'code', 'pre', 'style', 'script'])
+const NON_PROSE_ELEMENTS = new Set(['kbd', 'Kbd', 'Keycap', 'code', 'pre', 'style', 'script'])
 
 /**
  * Literals that read the same in every language, by file. Anything else goes

@@ -35,6 +35,7 @@ function quitFixture(failingStep?: string, rejectServer = false, rejectPublicAcc
   const context = {
     app, isQuitting: false, quitCleanupStarted: false, quitCleanupFinished: false,
     dataMigration,
+    accountService: undefined as { cancelLogin(): Promise<unknown> } | undefined,
     preventSleepService: { dispose: cleanup('preventSleep') },
     idlePowerService: { dispose: cleanup('idlePower') },
     mainWindow: {}, saveWindowState: cleanup('window'),
@@ -84,7 +85,12 @@ describe('Electron quit lifecycle', () => {
 
   it('waits for server cleanup, coalesces repeated quits, then allows the final quit', async () => {
     const fixture = quitFixture()
+    const login = new AbortController()
+    const cancelled = vi.fn()
+    login.signal.addEventListener('abort', cancelled)
+    fixture.context.accountService = { cancelLogin: async () => { login.abort() } }
     expect(fixture.requestQuit().preventDefault).toHaveBeenCalledOnce()
+    expect(cancelled).toHaveBeenCalledOnce()
     expect(fixture.context.isQuitting).toBe(true)
     expect(fixture.requestQuit().preventDefault).toHaveBeenCalledOnce()
     expect(fixture.exit).not.toHaveBeenCalled()
@@ -94,6 +100,7 @@ describe('Electron quit lifecycle', () => {
 
     fixture.finishServer()
     await settle()
+    expect(cancelled).toHaveBeenCalledOnce()
     expect(fixture.app.quit).toHaveBeenCalledOnce()
     expect(fixture.exit).toHaveBeenCalledOnce()
   })

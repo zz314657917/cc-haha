@@ -5,6 +5,26 @@ import { createElectronHost } from './electronHost'
 import { PUBLIC_ACCESS_CONSENT_VERSION, type WorkspaceBrowserMenuOptions } from './types'
 
 describe('electron desktop host', () => {
+  it('routes account actions through fixed preload channels without exposing session credentials', async () => {
+    const invoke = vi.fn().mockResolvedValue({ ok: true, data: undefined })
+    const { account } = createElectronHost({ invoke, subscribe: vi.fn() })
+    await account.getStatus()
+    await account.beginLogin()
+    await account.cancelLogin()
+    await account.signOut()
+    await account.getProfile()
+    await account.listAnnouncements({ limit: 10 })
+    await account.markAnnouncementRead({ id: '2' })
+    await account.markAllAnnouncementsRead()
+    expect(invoke.mock.calls).toEqual([
+      [ELECTRON_IPC_CHANNELS.accountGetStatus, undefined], [ELECTRON_IPC_CHANNELS.accountBeginLogin, undefined],
+      [ELECTRON_IPC_CHANNELS.accountCancelLogin, undefined], [ELECTRON_IPC_CHANNELS.accountSignOut, undefined],
+      [ELECTRON_IPC_CHANNELS.accountGetProfile, undefined], [ELECTRON_IPC_CHANNELS.accountListAnnouncements, { limit: 10 }],
+      [ELECTRON_IPC_CHANNELS.accountMarkAnnouncementRead, { id: '2' }], [ELECTRON_IPC_CHANNELS.accountMarkAllAnnouncementsRead, undefined],
+    ])
+    await expect(account.markAnnouncementRead({ id: '../token' })).rejects.toThrow('Invalid Electron IPC payload')
+    expect(invoke).toHaveBeenCalledTimes(8)
+  })
   it('only exposes validated configuration, status and cancellation for idle power actions', async () => {
     const invoke = vi.fn().mockResolvedValue(undefined)
     const subscribe = vi.fn()

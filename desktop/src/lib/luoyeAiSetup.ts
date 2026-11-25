@@ -75,13 +75,11 @@ export type LuoyeAiModelSelection = {
  * Maps the gateway's live catalog onto provider slots. A sub2api key belongs to
  * one group, and a group serves one platform, so a key may carry only Claude or
  * only GPT. A family the catalog does not list is left out rather than pointed
- * at a model the key cannot call. An empty catalog (a gateway that hides
- * /models) falls back to the preset's defaults.
+ * at a model the key cannot call. A hidden catalog needs manual setup.
  */
 export function selectLuoyeAiModels(modelIds: readonly string[]): LuoyeAiModelSelection {
   const ids = [...new Set(modelIds.map((id) => id.trim()).filter(Boolean))]
-  const imageModel = pick(ids, IMAGE_PREFERENCES, (id) => /gpt-image/i.test(id))
-    ?? (ids.length === 0 ? LUOYEAI_PRESET.defaultImageGeneration?.model ?? null : null)
+  const imageModel = pick(ids, IMAGE_PREFERENCES, (id) => /gpt-image/i.test(id)) ?? null
 
   const opus = pick(ids, CLAUDE_PREFERENCES.opus, (id) => /^claude-opus/i.test(id))
   const sonnet = pick(ids, CLAUDE_PREFERENCES.sonnet, (id) => /^claude-sonnet/i.test(id))
@@ -106,10 +104,36 @@ export function selectLuoyeAiModels(modelIds: readonly string[]): LuoyeAiModelSe
       }
     : null
 
-  if (!claude && !gpt) {
-    return { claude: { ...LUOYEAI_PRESET.defaultModels }, gpt: null, imageModel }
-  }
   return { claude, gpt, imageModel }
+}
+
+export type LuoyeAiFamily = 'claude' | 'gpt'
+export type LuoyeAiScope = 'shared' | LuoyeAiFamily
+
+/** Identity is based on the endpoint/preset and model, not the editable label or masked key. */
+export function luoyeAiFamily(provider: Pick<SavedProvider, 'presetId' | 'baseUrl' | 'models'>): LuoyeAiFamily | null {
+  if (!isLuoyeAiProvider(provider)) return null
+  const main = provider.models.main.trim()
+  return /^claude-/i.test(main) ? 'claude' : isGptChatModel(main) ? 'gpt' : null
+}
+
+export type LuoyeAiCreateAttempt = { input: CreateProviderInput; previousIds: Set<string> }
+
+/** After a lost create response, use the freshly reloaded list rather than replaying the write.
+ * A masked key is not an identity. Match all submitted public settings and require one new ID. */
+export function recoverLuoyeAiCreate({ input, previousIds }: LuoyeAiCreateAttempt, providers: readonly SavedProvider[]): SavedProvider | undefined {
+  const added = providers.filter(provider => !previousIds.has(provider.id))
+  const matches = added.filter(p => p.name === input.name && p.presetId === input.presetId && p.baseUrl === input.baseUrl
+    && p.apiFormat === input.apiFormat && p.authStrategy === input.authStrategy
+    && (p.apiKey === input.apiKey || !p.apiKey || /^[*•]+$/.test(p.apiKey))
+    && (['main', 'fable', 'haiku', 'sonnet', 'opus'] as const).every(slot => p.models[slot] === input.models[slot])
+    && p.imageGeneration?.model === input.imageGeneration?.model && p.imageGeneration?.protocol === input.imageGeneration?.protocol
+    && !p.imageGeneration?.baseUrl && !p.imageGeneration?.apiKey && !p.notes && !p.proxy)
+  if (matches.length === 1) return matches[0]
+  if (added.length || providers.some(p => luoyeAiFamily(p) === luoyeAiFamily(input))) {
+    throw new LuoyeAiSetupError('uncertain-save', 'Cannot identify the saved configuration')
+  }
+  return undefined
 }
 
 export type LuoyeAiProbe = {
@@ -118,7 +142,7 @@ export type LuoyeAiProbe = {
   modelIds: string[]
 }
 
-export type LuoyeAiSetupErrorCode = 'invalid-key' | 'unreachable'
+export type LuoyeAiSetupErrorCode = 'invalid-key' | 'unreachable' | 'catalog-unavailable' | 'unsupported' | 'uncertain-save'
 
 export class LuoyeAiSetupError extends Error {
   constructor(readonly code: LuoyeAiSetupErrorCode, message: string) {
@@ -134,11 +158,14 @@ async function probeRegion(region: LuoyeAiRegion, apiKey: string, fetchModels: F
   const result = await fetchModels({ baseUrl, apiKey })
   if (!result.ok) {
     throw new LuoyeAiSetupError(
-      result.errorCode === 'auth-failed' ? 'invalid-key' : 'unreachable',
+      result.errorCode === 'auth-failed' ? 'invalid-key'
+        : result.errorCode === 'endpoint-not-found' || result.errorCode === 'not-supported' ? 'catalog-unavailable' : 'unreachable',
       result.message,
     )
   }
-  return { region, baseUrl, modelIds: result.models.map((model) => model.id) }
+  const modelIds = result.models.map((model) => model.id.trim()).filter(Boolean)
+  if (!modelIds.length) throw new LuoyeAiSetupError('catalog-unavailable', 'Empty model catalog')
+  return { region, baseUrl, modelIds }
 }
 
 /**
@@ -158,12 +185,11 @@ export async function probeLuoyeAi(
     return await Promise.any(attempts)
   } catch (error) {
     const failures = error instanceof AggregateError ? error.errors : [error]
-    const invalidKey = failures.some((failure) => failure instanceof LuoyeAiSetupError && failure.code === 'invalid-key')
-    const first = failures[0]
-    throw new LuoyeAiSetupError(
-      invalidKey ? 'invalid-key' : 'unreachable',
-      first instanceof Error ? first.message : String(first),
-    )
+    for (const code of ['invalid-key', 'catalog-unavailable'] as const) {
+      const failure = failures.find((item) => item instanceof LuoyeAiSetupError && item.code === code)
+      if (failure) throw failure
+    }
+    throw new LuoyeAiSetupError('unreachable', 'No reachable node')
   }
 }
 
@@ -171,6 +197,7 @@ export function buildLuoyeAiProviderInputs(
   apiKey: string,
   probe: LuoyeAiProbe,
   names: { claude: string; gpt: string },
+  scope: LuoyeAiScope = 'shared',
 ): CreateProviderInput[] {
   const selection = selectLuoyeAiModels(probe.modelIds)
   const base = {
@@ -184,8 +211,9 @@ export function buildLuoyeAiProviderInputs(
     }),
   }
   const inputs: CreateProviderInput[] = []
-  if (selection.claude) inputs.push({ ...base, name: names.claude, models: selection.claude })
-  if (selection.gpt) inputs.push({ ...base, name: names.gpt, models: selection.gpt })
+  if (selection.claude && scope !== 'gpt') inputs.push({ ...base, name: names.claude, models: selection.claude })
+  if (selection.gpt && scope !== 'claude') inputs.push({ ...base, name: names.gpt, models: selection.gpt })
+  if (!inputs.length) throw new LuoyeAiSetupError('unsupported', 'No supported chat model for this selection')
   return inputs
 }
 

@@ -66,7 +66,7 @@ export function AboutSettings() {
           <div className="min-w-0 flex-1">
             <div className="text-[15px] font-semibold text-[var(--color-text-primary)]">落叶AI</div>
             {version && (
-              <div className="mt-0.5 text-xs text-[var(--color-text-tertiary)]">
+              <div className="mt-0.5 text-xs tabular-nums text-[var(--color-text-tertiary)]">
                 {t('settings.about.version')} {version}
               </div>
             )}
@@ -94,9 +94,8 @@ export function AboutSettings() {
             external
           />
           <SettingsBlock>
-            <p className="text-xs leading-[1.5] text-[var(--color-text-secondary)]">
-              {t('settings.about.modifiedNotice')}
-            </p>
+            <p className="text-[13px] font-medium text-[var(--color-text-primary)]">{t('settings.about.modifiedNotice')}</p>
+            <p className="mt-1 text-xs leading-[1.5] text-[var(--color-text-secondary)]">{t('settings.about.materialChanges')}</p>
           </SettingsBlock>
         </SettingsGroup>
       </SettingsSection>

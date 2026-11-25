@@ -36,7 +36,24 @@ const defaultAppMode: AppModeConfig = {
 
 const defaultPermissionState: NotificationPermissionState = 'default'
 
+const accountUnavailable = <T>(): Promise<import('./types').AccountResult<T>> => Promise.resolve({
+  ok: false,
+  error: { code: 'unavailable', message: 'Account login is available in the LuoyeAI desktop app.' },
+})
+
 export const browserHost: DesktopHost = {
+  account: {
+    async getStatus() {
+      return { ok: true, data: { status: 'unavailable', authenticated: false } }
+    },
+    beginLogin: () => accountUnavailable(),
+    cancelLogin: () => accountUnavailable(),
+    signOut: () => accountUnavailable(),
+    getProfile: () => accountUnavailable(),
+    listAnnouncements: () => accountUnavailable(),
+    markAnnouncementRead: () => accountUnavailable(),
+    markAllAnnouncementsRead: () => accountUnavailable(),
+  },
   publicAccess: {
     async getStatus() { return unsupported('Public access management') },
     async configure() { return unsupported('Public access management') },

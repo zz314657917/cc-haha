@@ -2,7 +2,7 @@
   "name": "luoyeai-desktop",
   "productName": "LuoyeAI",
   "private": true,
-  "version": "0.7.8",
+  "version": "0.8.0",
   "description": "落叶AI desktop client. Based on cc-haha (https://github.com/NanmiCoder/cc-haha); unofficial modified version.",
   "homepage": "https://cn-api.3zapi.com",
   "author": {
@@ -68,7 +68,10 @@
       "target": "nsis",
       "icon": "src-tauri/icons/icon.ico",
       "extraResources": [
-        { "from": "src-tauri/icons/icon.ico", "to": "app-icon.ico" }
+        { "from": "src-tauri/icons/icon.ico", "to": "app-icon.ico" },
+        { "from": "../LICENSE", "to": "licenses/cc-haha/LICENSE" },
+        { "from": "../NOTICE", "to": "licenses/cc-haha/NOTICE" },
+        { "from": "../THIRD_PARTY_LICENSES.md", "to": "licenses/cc-haha/THIRD_PARTY_LICENSES.md" }
       ]
     },
     "nsis": {
@@ -121,6 +124,7 @@
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
+    "@lobehub/icons-static-svg": "^1.106.0",
     "@tailwindcss/typography": "^0.5.19",
     "@types/dompurify": "^3.2.0",
     "@xterm/addon-fit": "^0.11.0",

@@ -104,6 +104,15 @@ describe('useSidebarResize', () => {
     expect(localStorage.getItem('cc-haha-sidebar-width')).toBe('360')
   })
 
+  it('excludes the application rail from the dragged width', () => {
+    render(<Harness />)
+    const shell = screen.getByTestId('shell')
+    const bounds = shell.getBoundingClientRect()
+    shell.getBoundingClientRect = () => ({ ...bounds, left: 52 })
+    drag(360)
+    expect(useUIStore.getState().sidebarWidth).toBe(308)
+  })
+
   it('clamps the width to the safe range instead of following the pointer past it', () => {
     render(<Harness />)
 

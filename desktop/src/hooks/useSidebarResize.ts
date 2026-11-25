@@ -63,10 +63,10 @@ export function useSidebarResize(enabled: boolean) {
     if (Number.isFinite(width)) useUIStore.getState().setSidebarWidth(width)
   }, [shell])
 
-  const trackPointer = useCallback((clientX: number) => {
+  const trackPointer = useCallback((pointerX: number) => {
     if (!shell) return
-    // The sidebar is flush against the window's left edge, so the pointer's
-    // clientX is the requested width outright — no grab-offset to drift.
+    // The persistent application rail sits to the left of the session list.
+    const clientX = pointerX - shell.getBoundingClientRect().left
     const { sidebarOpen, sidebarWidth: storedWidth, setSidebarOpen } = useUIStore.getState()
 
     if (sidebarOpen && clientX < COLLAPSE_AT) {

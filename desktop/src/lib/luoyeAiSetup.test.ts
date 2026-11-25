@@ -57,10 +57,8 @@ describe('selectLuoyeAiModels', () => {
     expect(selectLuoyeAiModels(['claude-opus-5-5']).imageModel).toBeNull()
   })
 
-  it('falls back to the preset defaults when the gateway hides its catalog', () => {
-    const selection = selectLuoyeAiModels([])
-    expect(selection.claude).toEqual(LUOYEAI_PRESET.defaultModels)
-    expect(selection.imageModel).toBe('gpt-image-2.6-sunburst')
+  it.each([[], ['unknown-family'], ['gpt-image-2.6-flare']])('does not invent chat models in an unsupported or hidden catalog (%s)', (...ids) => {
+    expect(selectLuoyeAiModels(ids)).toMatchObject({ claude: null, gpt: null })
   })
 })
 

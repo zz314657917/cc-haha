@@ -158,6 +158,7 @@ import {
   resolveAgentMessageToolUseContext,
 } from 'src/utils/queryContext.js'
 import { runSideQuestion } from 'src/utils/sideQuestion.js'
+import { runPromptOptimize } from 'src/utils/promptOptimize.js'
 import {
   processSessionStartHooks,
   processSetupHooks,
@@ -175,10 +176,16 @@ import {
 import { settingsChangeDetector } from 'src/utils/settings/changeDetector.js'
 import { applySettingsChange } from 'src/utils/settings/applySettingsChange.js'
 import {
+  clearFastModeCooldown,
+  getFastModeState,
+  getFastModeUnavailableReason,
   isFastModeAvailable,
   isFastModeEnabled,
   isFastModeSupportedByModel,
-  getFastModeState,
+  onCooldownExpired,
+  onCooldownTriggered,
+  onFastModeOverageRejection,
+  onOrgFastModeChanged,
 } from 'src/utils/fastMode.js'
 import {
   isAutoModeGateEnabled,
@@ -292,7 +299,7 @@ import {
 } from 'src/utils/messages/mappers.js'
 import { createModelSwitchBreadcrumbs, createUserMessage } from 'src/utils/messages.js'
 import { PrintPartialOutputTracker } from './partialOutput.js'
-import { collectContextData } from 'src/commands/context/context-noninteractive.js'
+import { collectContextData, collectContextSummary } from 'src/commands/context/context-noninteractive.js'
 import { getSessionUsageSnapshot } from 'src/cost-tracker.js'
 import { LOCAL_COMMAND_STDOUT_TAG } from 'src/constants/xml.js'
 import {
@@ -378,6 +385,7 @@ import { formatTeamFinishedPrompt, SHUTDOWN_TEAM_PROMPT } from '../utils/swarm/t
 import {
   readUnreadMessages,
   claimMailboxMessages,
+  returnClaimedMailboxMessages,
   formatTeammateMessages,
   isShutdownApproved,
   type TeammateMessage,
@@ -389,7 +397,7 @@ import {
 import { removeTeammateFromTeamFile, readTeamFile, getTeamFilePath, unregisterTeamForSessionCleanup } from '../utils/swarm/teamHelpers.js'
 import { clearLeaderTeamName, setLeaderTeamName } from '../utils/tasks.js'
 import { clearTeammateColors } from '../utils/swarm/teammateLayoutManager.js'
-import { buildTeamRuntimeSnapshot } from '../utils/swarm/teamRuntimeSnapshot.js'
+import { buildTeamRuntimeSnapshot, confirmTeamRuntimeResume, teamRuntimeSnapshotHoldsMail } from '../utils/swarm/teamRuntimeSnapshot.js'
 import { getCanonicalTeamTaskListId, listTasks, unassignTeammateTasks } from '../utils/tasks.js'
 import { getRunningTasks } from '../utils/task/framework.js'
 import { isBackgroundTask } from '../tasks/types.js'
@@ -453,6 +461,7 @@ export function createShutdownTeamPrompt(): QueuedCommand {
 export const MAX_LEAD_MAILBOX_ACK_FAILURES = 5
 
 export type LeadMailboxPollState = {
+  revision: number
   /** The unread mail left once the last teammate went away was drained. */
   finalDrainDone: boolean
   /** Consecutive polls whose batch could not be acknowledged. */
@@ -465,7 +474,18 @@ export type LeadMailboxPollState = {
 }
 
 export function createLeadMailboxPollState(): LeadMailboxPollState {
-  return { finalDrainDone: false, consecutiveAckFailures: 0, held: false }
+  return { revision: 0, finalDrainDone: false, consecutiveAckFailures: 0, held: false }
+}
+
+/** A confirmed human intent also restarts a poll that already returned. */
+export function resumeLeadMailboxPoll(state: LeadMailboxPollState, run: () => Promise<void>): void {
+  Object.assign(state, createLeadMailboxPollState(), { revision: state.revision + 1 })
+  void run()
+}
+
+export function pauseLeadMailboxPoll(state: LeadMailboxPollState): void {
+  state.held = true
+  state.revision++
 }
 
 export type LeadMailboxPollStep =
@@ -487,8 +507,11 @@ export async function takeLeadMailboxBatch(
   options: { teamName: string | undefined; hasActiveTeammates: boolean },
 ): Promise<LeadMailboxPollStep> {
   const { teamName, hasActiveTeammates } = options
-  if (state.held) return { kind: 'held' }
+  const revision = state.revision
+  const fresh = () => !state.held && state.revision === revision
+  if (!fresh()) return { kind: 'held' }
   const unread = await readUnreadMessages(TEAM_LEAD_NAME, teamName)
+  if (!fresh()) return { kind: 'held' }
 
   if (!hasActiveTeammates) {
     if (
@@ -497,7 +520,7 @@ export async function takeLeadMailboxBatch(
       state.consecutiveAckFailures >= MAX_LEAD_MAILBOX_ACK_FAILURES
     ) {
       if (unread.length === 0) {
-        Object.assign(state, createLeadMailboxPollState())
+        Object.assign(state, createLeadMailboxPollState(), { revision })
       }
       return { kind: 'stop' }
     }
@@ -511,7 +534,11 @@ export async function takeLeadMailboxBatch(
     return { kind: 'idle' }
   }
 
-  const claimed = await claimMailboxMessages(TEAM_LEAD_NAME, teamName, unread)
+  const claimed = await claimMailboxMessages(TEAM_LEAD_NAME, teamName, unread, fresh)
+  if (!fresh()) {
+    if (claimed) await returnClaimedMailboxMessages(TEAM_LEAD_NAME, teamName, claimed)
+    return { kind: 'held' }
+  }
   if (claimed) {
     state.consecutiveAckFailures = 0
     if (claimed.length === 0) {
@@ -1433,11 +1460,103 @@ function runHeadlessStreaming(
   }
   statusListeners.add(rateLimitListener)
 
+  let explicitFastModeOverride: boolean | undefined
+  const syncFastModeForModel = (model: string) => {
+    if (!isFastModeEnabled()) {
+      return
+    }
+    setAppState(prev => {
+      const s = prev.settings as Record<string, unknown>
+      const desiredFastMode =
+        explicitFastModeOverride ??
+        (s.fastMode === true && !s.fastModePerSessionOptIn)
+      const nextFastMode =
+        desiredFastMode &&
+        isFastModeAvailable() &&
+        isFastModeSupportedByModel(model)
+      return prev.fastMode === nextFastMode
+        ? prev
+        : { ...prev, fastMode: nextFastMode }
+    })
+  }
+
+  const unsubscribeOrgFastMode = onOrgFastModeChanged(orgEnabled => {
+    if (orgEnabled || disposed) {
+      return
+    }
+    explicitFastModeOverride = false
+    setAppState(prev => (prev.fastMode ? { ...prev, fastMode: false } : prev))
+    output.enqueue({
+      type: 'system',
+      subtype: 'fast_mode_status',
+      fast_mode_state: 'off',
+      reason: 'org_disabled',
+      message:
+        getFastModeUnavailableReason() ??
+        'Fast mode has been disabled by your organization',
+      uuid: randomUUID(),
+      session_id: getSessionId(),
+    })
+  })
+  const unsubscribeFastModeOverage = onFastModeOverageRejection(message => {
+    if (disposed) {
+      return
+    }
+    explicitFastModeOverride = false
+    setAppState(prev => (prev.fastMode ? { ...prev, fastMode: false } : prev))
+    output.enqueue({
+      type: 'system',
+      subtype: 'fast_mode_status',
+      fast_mode_state: 'off',
+      reason: 'overage_rejected',
+      message,
+      uuid: randomUUID(),
+      session_id: getSessionId(),
+    })
+  })
+  const unsubscribeFastModeCooldown = onCooldownTriggered((resetAt, reason) => {
+    if (disposed) {
+      return
+    }
+    const remainingSec = Math.max(1, Math.ceil((resetAt - Date.now()) / 1000))
+    const message =
+      reason === 'overloaded'
+        ? `Fast mode temporarily paused due to high load (resuming in ~${remainingSec}s)`
+        : `Fast mode rate limited (resuming in ~${remainingSec}s)`
+    output.enqueue({
+      type: 'system',
+      subtype: 'fast_mode_status',
+      fast_mode_state: 'cooldown',
+      reason,
+      reset_at: resetAt,
+      message,
+      uuid: randomUUID(),
+      session_id: getSessionId(),
+    })
+  })
+  const unsubscribeFastModeCooldownExpired = onCooldownExpired(() => {
+    if (disposed) {
+      return
+    }
+    output.enqueue({
+      type: 'system',
+      subtype: 'fast_mode_status',
+      fast_mode_state: getFastModeState(
+        getMainLoopModel(),
+        getAppState().fastMode,
+      ),
+      reason: 'cooldown_expired',
+      uuid: randomUUID(),
+      session_id: getSessionId(),
+    })
+  })
+
   // Messages for internal tracking, directly mutated by ask(). These messages
   // include Assistant, User, Attachment, and Progress messages.
   // TODO: Clean up this code to avoid passing around a mutable array.
   const mutableMessages: Message[] = initialMessages
   const sideQuestionControllers = new Map<string, AbortController>()
+  const promptOptimizeControllers = new Map<string, AbortController>()
 
   // Seed the readFileState cache from the transcript (content the model saw,
   // with message timestamps) so getChangedFiles can detect external edits.
@@ -2654,7 +2773,7 @@ function runHeadlessStreaming(
           const hasMainThreadQueued = peek(isMainThread) !== undefined
           const agentFollowUp = deferredAgentNotifications.takeIfSettled(hasRunningBg || hasMainThreadQueued)
           if (agentFollowUp) {
-            enqueue({ mode: 'prompt', value: agentFollowUp, priority: 'later', isMeta: true })
+            enqueue({ mode: 'prompt', value: agentFollowUp, priority: 'later', isMeta: true, origin: { kind: 'task-notification' } })
           }
           if (hasRunningBg || hasMainThreadQueued || agentFollowUp) {
             waitingForAgents = true
@@ -2785,6 +2904,7 @@ function runHeadlessStreaming(
           const teamName = refreshedState.teamContext?.teamName
           // Claims exactly the batch it read before handing it out, and
           // drains leftover mail once after the last teammate is gone.
+          const pollRevision = leadMailboxPoll.revision
           const step = await takeLeadMailboxBatch(leadMailboxPoll, {
             teamName,
             hasActiveTeammates: hasTeammatesRequiringShutdown(refreshedState),
@@ -2799,6 +2919,7 @@ function runHeadlessStreaming(
           }
 
           if (step.kind === 'held') {
+            if (!leadMailboxPoll.held) { void run(); return }
             logForDebugging(
               '[print.ts] Team paused by the host; teammate mail waits for the next user message',
             )
@@ -2902,6 +3023,11 @@ function runHeadlessStreaming(
             // Permission requests stay out of the model context.
             const formatted = formatTeammateMessages(partitioned.remaining)
 
+            if (leadMailboxPoll.held || leadMailboxPoll.revision !== pollRevision) {
+              await returnClaimedMailboxMessages(TEAM_LEAD_NAME, teamName, partitioned.remaining)
+              if (!leadMailboxPoll.held) { void run(); return }
+              break
+            }
             // Enqueue and process
             enqueue({
               mode: 'prompt',
@@ -2978,6 +3104,10 @@ function runHeadlessStreaming(
         unsubscribeSkillChanges()
         unsubscribeAuthStatus?.()
         statusListeners.delete(rateLimitListener)
+        unsubscribeOrgFastMode()
+        unsubscribeFastModeOverage()
+        unsubscribeFastModeCooldown()
+        unsubscribeFastModeCooldownExpired()
         unsubscribeTaskNotifications()
         removeAgentRunMessageSink()
         sessionMessageInbox.dispose()
@@ -3148,10 +3278,20 @@ function runHeadlessStreaming(
           }
         } else if (message.request.subtype === 'team_runtime_snapshot') {
           try {
-            const teamContext = buildTeamRuntimeSnapshot(readTeamFile(message.request.team_name), message.request.created_at, getSessionId(), getTeamFilePath(message.request.team_name))
+            const team = readTeamFile(message.request.team_name)
+            const teamContext = buildTeamRuntimeSnapshot(team, message.request.created_at, getSessionId(), getTeamFilePath(message.request.team_name))
+            if (team && teamRuntimeSnapshotHoldsMail(team)) pauseLeadMailboxPoll(leadMailboxPoll)
             setLeaderTeamName(teamContext.teamName)
             setAppState(prev => ({ ...prev, teamContext }))
             sendControlResponseSuccess(message)
+          } catch (error) {
+            sendControlResponseError(message, error instanceof Error ? error.message : String(error))
+          }
+        } else if (message.request.subtype === 'team_runtime_resume') {
+          try {
+            const acknowledgement = confirmTeamRuntimeResume(readTeamFile(message.request.team_name), getSessionId(), message.request)
+            sendControlResponseSuccess(message, acknowledgement)
+            resumeLeadMailboxPoll(leadMailboxPoll, run)
           } catch (error) {
             sendControlResponseError(message, error instanceof Error ? error.message : String(error))
           }
@@ -3169,7 +3309,7 @@ function runHeadlessStreaming(
           sendControlResponseSuccess(message)
         } else if (message.request.subtype === 'interrupt' || message.request.subtype === 'team_plan_pause') {
           sessionMessageInbox.cancelQueued(dequeueAllMatching)
-          if (message.request.subtype === 'team_plan_pause') leadMailboxPoll.held = true
+          if (message.request.subtype === 'team_plan_pause') pauseLeadMailboxPoll(leadMailboxPoll)
           // Track escapes for attribution (ant-only feature)
           if (feature('COMMIT_ATTRIBUTION')) {
             setAppState(prev => ({
@@ -3290,6 +3430,7 @@ function runHeadlessStreaming(
               : requestedModel
           activeUserSpecifiedModel = model
           setMainLoopModelOverride(model)
+          syncFastModeForModel(model)
           notifySessionMetadataChanged({ model })
           injectModelSwitchBreadcrumbs(requestedModel, model)
 
@@ -3298,6 +3439,23 @@ function runHeadlessStreaming(
           options.promptSuggestions = message.request.enabled
           setSdkPromptSuggestions(suggestionState, message.request.enabled, setAppState)
           sendControlResponseSuccess(message)
+        } else if (message.request.subtype === 'set_fast_mode') {
+          explicitFastModeOverride = message.request.enabled
+          if (message.request.enabled) {
+            clearFastModeCooldown()
+          }
+          const currentModel = getMainLoopModel()
+          const nextFastMode =
+            message.request.enabled &&
+            isFastModeAvailable() &&
+            isFastModeSupportedByModel(currentModel)
+          setAppState(prev => ({
+            ...prev,
+            fastMode: nextFastMode,
+          }))
+          sendControlResponseSuccess(message, {
+            fast_mode_state: getFastModeState(currentModel, nextFastMode),
+          })
         } else if (message.request.subtype === 'set_max_thinking_tokens') {
           if (message.request.max_thinking_tokens === null) {
             options.thinkingConfig = undefined
@@ -3318,17 +3476,32 @@ function runHeadlessStreaming(
           sendControlResponseSuccess(message, getSessionUsageSnapshot())
         } else if (message.request.subtype === 'get_context_usage') {
           try {
+            const mainLoopModel = getMainLoopModel()
+            const savedPrefix = getLastCacheSafeParams()
+            const cacheSafeParams = savedPrefix?.toolUseContext.getAppState === getAppState ? savedPrefix : null
+            const summary = message.request.summaryOnly
+              ? collectContextSummary({
+                  messages: mutableMessages,
+                  mainLoopModel,
+                  cacheSafeParams,
+                })
+              : null
+            if (summary) {
+              sendControlResponseSuccess(message, { ...summary })
+              continue
+            }
             const appState = getAppState()
             const data = await collectContextData({
               messages: mutableMessages,
               getAppState,
               options: {
-                mainLoopModel: getMainLoopModel(),
+                mainLoopModel,
                 tools: buildAllTools(appState),
                 agentDefinitions: appState.agentDefinitions,
                 customSystemPrompt: options.systemPrompt,
                 appendSystemPrompt: options.appendSystemPrompt,
                 estimateOnly: Boolean(message.request.estimateOnly),
+                cacheSafeParams,
               },
             })
             sendControlResponseSuccess(message, { ...data })
@@ -4221,6 +4394,7 @@ function runHeadlessStreaming(
           const newModel = getMainLoopModel()
           if (newModel !== prevModel) {
             activeUserSpecifiedModel = newModel
+            syncFastModeForModel(newModel)
             const modelArg = incoming.model ? String(incoming.model) : 'default'
             notifySessionMetadataChanged({ model: newModel })
             injectModelSwitchBreadcrumbs(modelArg, newModel)
@@ -4405,6 +4579,52 @@ function runHeadlessStreaming(
               sideQuestionControllers.delete(questionId)
             }
           })()
+        } else if (message.request.subtype === 'cancel_optimize_prompt') {
+          const controller = promptOptimizeControllers.get(message.request.request_id)
+          controller?.abort(new Error('Prompt optimization cancelled'))
+          sendControlResponseSuccess(message, { cancelled: Boolean(controller) })
+        } else if (message.request.subtype === 'optimize_prompt') {
+          // Register synchronously so a following cancel request can find the
+          // fork even while fallback context is being assembled.
+          const { prompt, request_id } = message.request
+          const optimizeId = request_id ?? message.request_id
+          if (promptOptimizeControllers.has(optimizeId)) {
+            sendControlResponseError(message, 'Prompt optimization already running')
+            continue
+          }
+          const controller = createAbortController()
+          promptOptimizeControllers.set(optimizeId, controller)
+          const currentMessages = mutableMessages.slice()
+          void (async () => {
+            try {
+              const saved = getLastCacheSafeParams()
+              const cacheSafeParams = saved
+                ? { ...saved, forkContextMessages: currentMessages }
+                : await buildSideQuestionFallbackParams({
+                    tools: buildAllTools(getAppState()),
+                    commands: currentCommands,
+                    mcpClients: [
+                      ...getAppState().mcp.clients,
+                      ...sdkClients,
+                      ...dynamicMcpState.clients,
+                    ],
+                    messages: currentMessages,
+                    readFileState,
+                    getAppState,
+                    setAppState,
+                    customSystemPrompt: options.systemPrompt,
+                    appendSystemPrompt: options.appendSystemPrompt,
+                    thinkingConfig: options.thinkingConfig,
+                    agents: currentAgents,
+                  })
+              const result = await runPromptOptimize({ prompt, cacheSafeParams, signal: controller.signal })
+              sendControlResponseSuccess(message, { optimizedPrompt: result.optimizedPrompt })
+            } catch (e) {
+              sendControlResponseError(message, errorMessage(e))
+            } finally {
+              promptOptimizeControllers.delete(optimizeId)
+            }
+          })()
         } else if (
           (feature('PROACTIVE') || feature('KAIROS')) &&
           (message.request as { subtype: string }).subtype === 'set_proactive'
@@ -4475,6 +4695,7 @@ function runHeadlessStreaming(
                       model === 'default' ? getDefaultMainLoopModel() : model
                     activeUserSpecifiedModel = resolved
                     setMainLoopModelOverride(resolved)
+                    syncFastModeForModel(resolved)
                   },
                   onSetMaxThinkingTokens(maxTokens) {
                     if (maxTokens === null) {
@@ -4635,6 +4856,7 @@ function runHeadlessStreaming(
       // The user speaking again ends a host pause: mail held since then reaches
       // the lead after this turn, alongside whatever the user now wants.
       leadMailboxPoll.held = false
+      leadMailboxPoll.revision++
       enqueue({
         mode: 'prompt' as const,
         // file_attachments rides the protobuf catchall from the web composer.
@@ -4673,6 +4895,10 @@ function runHeadlessStreaming(
       unsubscribeSkillChanges()
       unsubscribeAuthStatus?.()
       statusListeners.delete(rateLimitListener)
+      unsubscribeOrgFastMode()
+      unsubscribeFastModeOverage()
+      unsubscribeFastModeCooldown()
+      unsubscribeFastModeCooldownExpired()
       unsubscribeTaskNotifications()
       removeAgentRunMessageSink()
       output.done()

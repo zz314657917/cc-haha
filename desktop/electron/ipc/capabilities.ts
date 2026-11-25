@@ -305,13 +305,15 @@ const workspaceBrowserMessage: Validator = value =>
 const HEX_COLOR = /^#[0-9a-fA-F]{6}$/
 const appliedAppearance: Validator = value =>
   isRecord(value)
-  && hasOnlyKeys(value, ['isDark', 'background', 'lightBackground', 'followSystem'])
+  && hasOnlyKeys(value, ['isDark', 'background', 'lightBackground', 'darkBackground', 'followSystem'])
   && typeof value.isDark === 'boolean'
   && typeof value.followSystem === 'boolean'
   && typeof value.background === 'string'
   && HEX_COLOR.test(value.background)
   && typeof value.lightBackground === 'string'
   && HEX_COLOR.test(value.lightBackground)
+  && (value.darkBackground === undefined
+    || (typeof value.darkBackground === 'string' && HEX_COLOR.test(value.darkBackground)))
 
 const updateCheckOptions: Validator = value => {
   if (value === undefined) return true
@@ -327,6 +329,19 @@ const localePreference: Validator = value =>
   || value === 'kr'
 
 export const ELECTRON_IPC_VALIDATORS = {
+  [ELECTRON_IPC_CHANNELS.accountGetStatus]: noPayload,
+  [ELECTRON_IPC_CHANNELS.accountBeginLogin]: noPayload,
+  [ELECTRON_IPC_CHANNELS.accountCancelLogin]: noPayload,
+  [ELECTRON_IPC_CHANNELS.accountSignOut]: noPayload,
+  [ELECTRON_IPC_CHANNELS.accountGetProfile]: noPayload,
+  [ELECTRON_IPC_CHANNELS.accountListAnnouncements]: value => value === undefined || (
+    isRecord(value) && hasOnlyKeys(value, ['cursor', 'limit'])
+    && (value.cursor === undefined || (typeof value.cursor === 'string' && /^\d{1,9}$/.test(value.cursor)))
+    && (value.limit === undefined || (typeof value.limit === 'number' && Number.isInteger(value.limit) && value.limit >= 1 && value.limit <= 100))
+  ),
+  [ELECTRON_IPC_CHANNELS.accountMarkAnnouncementRead]: value => isRecord(value) && hasOnlyKeys(value, ['id'])
+    && typeof value.id === 'string' && /^[1-9]\d{0,18}$/.test(value.id),
+  [ELECTRON_IPC_CHANNELS.accountMarkAllAnnouncementsRead]: noPayload,
   [ELECTRON_IPC_CHANNELS.appGetVersion]: noPayload,
   [ELECTRON_IPC_CHANNELS.powerSetPreventSleepWhileRunning]: booleanPayload,
   [ELECTRON_IPC_CHANNELS.powerGetIdleActionState]: noPayload,

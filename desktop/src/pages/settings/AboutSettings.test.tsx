@@ -118,8 +118,8 @@ it('names the product 落叶AI and links to the 落叶AI website', async () => {
 })
 
 // The cc-haha license (section 4) requires a visible attribution with a working
-// link on the About page, and a notice that this build is modified and unofficial.
-it('shows the upstream attribution and the unofficial-modification notice', async () => {
+// link on the About page, and a notice that identifies the modification and material changes.
+it('shows the upstream attribution and the concise modification notice without sign-in', async () => {
   const open = vi.spyOn(browserHost.shell, 'open').mockResolvedValue(undefined)
   await renderAboutSettings()
 
@@ -128,16 +128,15 @@ it('shows the upstream attribution and the unofficial-modification notice', asyn
   fireEvent.click(attribution)
   expect(open).toHaveBeenCalledWith('https://github.com/NanmiCoder/cc-haha')
 
-  const notice = screen.getByText(/cc-haha 的修改版，非官方发行版本/)
-  expect(notice).toHaveTextContent('内置落叶AI 服务商')
-  expect(notice).toHaveTextContent('首次启动 API Key 设置')
-  expect(notice).toHaveTextContent('余额显示')
-  expect(notice).toHaveTextContent('品牌更名')
+  expect(screen.getByText('本软件为 cc-haha 的修改版。')).toBeVisible()
+  expect(screen.getByText('主要改动：落叶AI 品牌、GPT 与 Claude 密钥配置、余额显示。')).toBeVisible()
 })
 
 it('drops the upstream promotion rows: star, issues, community group, changelog, author and social links', async () => {
   await renderAboutSettings()
 
+  expect(document.querySelector('img[src*="wechat-group-qr"]')).toBeNull()
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   expect(screen.queryByText('NanmiCoder/cc-haha')).not.toBeInTheDocument()
   expect(screen.queryByRole('button', { name: /反馈问题/ })).not.toBeInTheDocument()
   expect(screen.queryByRole('button', { name: /交流群/ })).not.toBeInTheDocument()

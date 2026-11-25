@@ -9,6 +9,22 @@ import {
 } from './capabilities'
 
 describe('Electron IPC capabilities', () => {
+  it('restricts LuoyeAI account IPC to fixed actions and structured positive announcement IDs', () => {
+    const channels = Object.values(ELECTRON_IPC_CHANNELS).filter(channel => channel.startsWith('desktop:account:'))
+    expect(channels).toHaveLength(8)
+    for (const channel of channels) {
+      expect(isElectronIpcChannelAllowedForPetWindow(channel)).toBe(false)
+      expect(validateElectronIpcPayload(channel, { url: 'https://example.test' })).toBe(false)
+      expect(validateElectronIpcPayload(channel, { token: 'anything' })).toBe(false)
+    }
+    const list = ELECTRON_IPC_CHANNELS.accountListAnnouncements
+    expect(validateElectronIpcPayload(list, { limit: 3, cursor: '2' })).toBe(true)
+    for (const bad of [{ limit: 0 }, { limit: Infinity }, { cursor: '../x' }]) expect(validateElectronIpcPayload(list, bad)).toBe(false)
+    const read = ELECTRON_IPC_CHANNELS.accountMarkAnnouncementRead
+    expect(validateElectronIpcPayload(read, { id: '123' })).toBe(true)
+    for (const bad of [{ id: '../me' }, { id: 3 }, { id: '0' }]) expect(validateElectronIpcPayload(read, bad)).toBe(false)
+  })
+
   it('allows only an optional WeChat target for adapter restart', () => {
     const channel = ELECTRON_IPC_CHANNELS.adaptersRestartSidecar
     expect(validateElectronIpcPayload(channel, undefined)).toBe(true)
@@ -265,6 +281,7 @@ describe('Electron IPC capabilities', () => {
       followSystem: false,
     }
     expect(validateElectronIpcPayload(ELECTRON_IPC_CHANNELS.appearanceSetApplied, valid)).toBe(true)
+    expect(validateElectronIpcPayload(ELECTRON_IPC_CHANNELS.appearanceSetApplied, { ...valid, darkBackground: '#202020' })).toBe(true)
 
     for (const invalid of [
       undefined,
@@ -278,6 +295,10 @@ describe('Electron IPC capabilities', () => {
       { ...valid, background: '#800E0E0E' },
       { ...valid, lightBackground: '#80FFFFFF' },
       { ...valid, lightBackground: 'white' },
+      { ...valid, darkBackground: '#80202020' },
+      { ...valid, darkBackground: '#222' },
+      { ...valid, darkBackground: 'black' },
+      { ...valid, darkBackground: null },
       { ...valid, extra: 1 },
     ]) {
       expect(

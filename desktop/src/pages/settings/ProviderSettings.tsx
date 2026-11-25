@@ -52,6 +52,7 @@ import { SettingsPageHeader, SettingsPill } from '@/components/settings/Settings
 import { Dropdown } from '@/components/ui/Dropdown'
 import { SegmentedControl } from '@/components/ui/SegmentedControl'
 import { Tooltip } from '@/components/ui/Tooltip'
+import { ModelBrandIcon, resolveModelBrand } from '@/components/composite/ModelBrandIcon'
 import type { SavedProvider, UpdateProviderInput, ProviderTestResult, ModelMapping, Model1mSupport, ApiFormat, ModelApiFormat, ProviderAuthStrategy, ProviderModelInfo, ProviderModelsErrorCode, ProviderProxyMode } from '../../types/provider'
 import { groupProviderModels, providerModelsErrorKey } from '../../lib/providerModels'
 import { resolveModelApiFormat } from '../../../../src/shared/modelApiFormats'
@@ -84,7 +85,9 @@ import { ProviderRequestCompatibilityFields } from '@/components/settings/Provid
 import { compatibilityForm, invalidCompatibilityNumber, parseCompatibilityForm, parseAnthropicBudgetForm, pickOutputBudget, readCompatibilityEditorJson, writeCompatibilityJson, type RequestCompatibilityForm } from '../../lib/providerRequestCompatibility'
 import { ProviderImageGenerationFields, type ImageGenerationFormValue } from '../../components/settings/ProviderImageGenerationFields'
 import { ProviderBalanceBadge } from '../../components/settings/ProviderBalanceBadge'
-import { isLuoyeAiProvider } from '../../lib/luoyeAiSetup'
+import { isLuoyeAiProvider, luoyeAiFamily, LUOYEAI_ENDPOINTS, type LuoyeAiScope } from '../../lib/luoyeAiSetup'
+import { LuoyeAiKeyDialog } from '@/components/layout/LuoyeAiSetupDialog'
+import { Card } from '@/components/ui/Card'
 import { BUILT_IN_PROVIDER_IDS, CLAUDE_OFFICIAL_PROVIDER_ID, OPENAI_OFFICIAL_PROVIDER_ID } from '../../constants/openaiOfficialProvider'
 import { GROK_OFFICIAL_PROVIDER_ID } from '../../constants/grokOfficialProvider'
 import { DEEPSEEK_ACCOUNT_PROVIDER_ID } from '../../constants/deepseekAccountProvider'
@@ -294,6 +297,7 @@ export function ProviderSettings({ browserMode = false }: { browserMode?: boolea
   const t = useTranslation()
   const [editingProvider, setEditingProvider] = useState<SavedProvider | null>(null)
   const [showCreateModal, setShowCreateModal] = useState(false)
+  const [keyDialog, setKeyDialog] = useState<{ initialScope: LuoyeAiScope; target?: SavedProvider } | null>(null)
   const [createPresetId, setCreatePresetId] = useState<string | undefined>(undefined)
   /** Connecting Magpie (no provider) or editing the saved one. */
   const [magpieDialog, setMagpieDialog] = useState<{ provider?: SavedProvider } | null>(null)
@@ -471,15 +475,29 @@ export function ProviderSettings({ browserMode = false }: { browserMode?: boolea
           dragLabel={t('settings.providers.dragToReorder')}
           dragDisabled={searching}
           onActivate={!isActive ? activate : undefined}
+          icon={(
+            <ModelBrandIcon
+              providerId={item.id}
+              size={15}
+              className={isActive ? 'text-[var(--color-brand)]' : 'text-[var(--color-text-secondary)]'}
+            />
+          )}
           title={<HighlightedText text={t(official.title)} terms={terms} />}
           subtitle={<HighlightedText text={t(official.subtitle)} terms={terms} />}
           badges={isActive ? (
             <Badge tone="brand">{t('settings.providers.default')}</Badge>
           ) : null}
-          details={!browserMode && isActive ? (
-            <div className="flex flex-col">
-              <official.Login />
-              <OfficialProviderModelSettings providerId={item.id} />
+          details={!browserMode ? (
+            <div className="flex flex-col gap-3">
+              {isActive ? (
+                <>
+                  <official.Login />
+                  <OfficialProviderModelSettings providerId={item.id} />
+                </>
+              ) : item.kind === 'claude-official' ? <ClaudeOfficialLogin usageOnly /> : null}
+              {item.kind !== 'claude-official' && (
+                <p className="text-xs text-[var(--color-text-secondary)]">{t('settings.providers.officialUsageNotIntegrated')}</p>
+              )}
             </div>
           ) : null}
         />
@@ -492,6 +510,8 @@ export function ProviderSettings({ browserMode = false }: { browserMode?: boolea
     const preset = presetMap.get(provider.presetId)
     const formatBadge = providerFormatBadge(provider, preset, t)
     const isMagpie = isMagpieProvider(provider)
+    const family = luoyeAiFamily(provider)
+    const canChangeLuoyeKey = family && Object.values(LUOYEAI_ENDPOINTS).includes(provider.baseUrl)
 
     return (
       <SortableProviderCard
@@ -502,6 +522,15 @@ export function ProviderSettings({ browserMode = false }: { browserMode?: boolea
         dragLabel={t('settings.providers.dragToReorder')}
         dragDisabled={searching}
         onActivate={!isActive ? () => handleActivate(provider.id) : undefined}
+        icon={(
+          <ModelBrandIcon
+            presetId={provider.presetId}
+            providerName={provider.name}
+            modelId={resolveModelBrand({ presetId: provider.presetId, providerName: provider.name }) ? undefined : provider.models.main}
+            size={15}
+            className={isActive ? 'text-[var(--color-brand)]' : 'text-[var(--color-text-secondary)]'}
+          />
+        )}
         title={<HighlightedText text={provider.name} terms={terms} />}
         subtitle={<span className="font-mono text-[11px]"><HighlightedText text={providerSubtitle(provider)} terms={terms} /></span>}
         matchNote={match?.hiddenField ? (
@@ -528,7 +557,6 @@ export function ProviderSettings({ browserMode = false }: { browserMode?: boolea
               <Badge tone="neutral">{preset.name}</Badge>
             )}
             {formatBadge && <Badge tone="warning">{formatBadge}</Badge>}
-            {isLuoyeAiProvider(provider) && <ProviderBalanceBadge providerId={provider.id} />}
             {isActive && (
               <Badge tone="brand">{t('settings.providers.default')}</Badge>
             )}
@@ -545,6 +573,8 @@ export function ProviderSettings({ browserMode = false }: { browserMode?: boolea
         ) : null}
         actions={(
           <>
+            {isLuoyeAiProvider(provider) && <ProviderBalanceBadge providerId={provider.id} />}
+            {!browserMode && canChangeLuoyeKey && family && <Button variant="secondary" size="sm" onClick={() => setKeyDialog({ initialScope: family, target: provider })}>{t('luoyeAi.replace')}</Button>}
             {!browserMode && <Button variant="ghost" size="sm" onClick={() => handleTest(provider)} loading={test?.loading}>{t('settings.providers.test')}</Button>}
             <Button
               variant="ghost"
@@ -627,6 +657,19 @@ export function ProviderSettings({ browserMode = false }: { browserMode?: boolea
         />
       )}
 
+      {!browserMode && hasLoadedProviders && !providerLoadError && !searching && tab === 'api' && (
+        <div className="mt-4 flex flex-col gap-2">
+          {(['gpt', 'claude'] as const).filter(family => !providers.some(p => luoyeAiFamily(p) === family)).map(family => {
+            const name = t(family === 'gpt' ? 'luoyeAi.providerNameGpt' : 'luoyeAi.providerNameClaude')
+            return <Card key={family} as="section" aria-label={name} className="flex items-center justify-between gap-3">
+              <span className="text-[13px] font-medium text-[var(--color-text-primary)]">{name}</span>
+              <Button variant="secondary" size="sm" onClick={() => setKeyDialog({ initialScope: providers.some(p => luoyeAiFamily(p)) ? family : 'shared' })}>
+                {t('luoyeAi.configure')}
+              </Button>
+            </Card>
+          })}
+        </div>
+      )}
       {visibleEntries.length > 0 && (
         <DndContext
           sensors={sensors}
@@ -694,6 +737,7 @@ export function ProviderSettings({ browserMode = false }: { browserMode?: boolea
         </div>
       ) : null}
 
+      {keyDialog && <LuoyeAiKeyDialog {...keyDialog} onClose={() => setKeyDialog(null)} />}
       {/* Create Modal — conditionally rendered so state resets on close */}
       {showCreateModal && (
         <ProviderFormModal
@@ -749,6 +793,7 @@ type SortableProviderCardProps = {
   dragLabel: string
   /** While searching the list is a filtered view, so it is not reorderable. */
   dragDisabled?: boolean
+  icon?: ReactNode
   title: ReactNode
   subtitle: ReactNode
   badges?: ReactNode
@@ -780,6 +825,7 @@ function SortableProviderCard({
   isActive,
   dragLabel,
   dragDisabled = false,
+  icon,
   title,
   subtitle,
   badges,
@@ -812,13 +858,13 @@ function SortableProviderCard({
       style={style}
       data-testid={providerItemTestId(item)}
       className={cx(
-        'group relative flex flex-wrap items-start gap-x-2.5 gap-y-2 rounded-[var(--radius-lg)] border bg-[var(--color-surface-container-lowest)] p-[14px] pl-1.5',
+        'group relative flex flex-wrap items-start gap-x-2.5 gap-y-2 rounded-[var(--radius-lg)] border bg-[var(--color-surface-container)] p-[14px] pl-1.5',
         'transition-[border-color,box-shadow] duration-150 ease-out',
-        // The default provider: a terracotta-mixed hairline plus a soft brand
+        // The default provider: a cobalt/accent-mixed hairline plus a soft brand
         // halo. Not the focus color, which would collide with the real focus ring.
         isActive
           ? 'border-[var(--color-primary-fixed-dim)] shadow-[0_0_0_3px_var(--color-brand-soft)]'
-          : 'border-[var(--color-border)] hover:border-[var(--color-outline)]',
+          : 'border-[var(--color-border)] shadow-[var(--bevel-surface-rest)] hover:border-[var(--color-outline)]',
         isDragging && 'opacity-90 shadow-[var(--shadow-dropdown)]',
       )}
     >
@@ -861,6 +907,7 @@ function SortableProviderCard({
         />
         <span className="min-w-0 flex-1">
           <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+            {icon}
             <span className="min-w-0 truncate text-sm font-semibold leading-5 text-[var(--color-text-primary)]">{title}</span>
             {badges}
           </span>
@@ -1582,6 +1629,9 @@ function ProviderFormModal({ open, onClose, mode, provider, presets, initialPres
         const mergedEnv: Record<string, unknown> = {
           ...cleanedEnv,
           ...omitAuthEnv(selectedPreset.defaultEnv),
+          ...(writesManagedSettings && settings.providerEnvOwner === provider?.id && typeof existingEnv.CLAUDE_CODE_SUBAGENT_MODEL === 'string'
+            ? { CLAUDE_CODE_SUBAGENT_MODEL: existingEnv.CLAUDE_CODE_SUBAGENT_MODEL }
+            : {}),
           ...(autoCompactWindowEnv ? { [AUTO_COMPACT_WINDOW_ENV_KEY]: autoCompactWindowEnv } : {}),
           ...(Object.keys(modelContextWindows).length > 0
             ? { [MODEL_CONTEXT_WINDOWS_ENV_KEY]: JSON.stringify(modelContextWindows) }
@@ -1607,6 +1657,7 @@ function ProviderFormModal({ open, onClose, mode, provider, presets, initialPres
         // (or whatever was last selected) and saving would write that back.
         delete merged.model
         delete merged.modelContext
+        delete merged.providerEnvOwner
         setSettingsJson(JSON.stringify(writeCompatibilityJson(merged, apiFormat === 'anthropic' ? parseAnthropicBudgetForm(compatibility) : parseCompatibilityForm(compatibility)), null, 2))
       }).catch(() => {
         if (!cancelled && !settingsJsonUserEditedRef.current) {

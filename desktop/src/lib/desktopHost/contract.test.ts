@@ -22,6 +22,12 @@ describe('desktop host contract', () => {
     })
   })
 
+  it('reports account actions unavailable without opening a website or requiring login', async () => {
+    expect(await browserHost.account.getStatus()).toEqual({ ok: true, data: { status: 'unavailable', authenticated: false } })
+    expect(await browserHost.account.beginLogin()).toMatchObject({ ok: false, error: { code: 'unavailable' } })
+    expect(await browserHost.account.listAnnouncements()).toMatchObject({ ok: false, error: { code: 'unavailable' } })
+  })
+
   it('rejects desktop-only browser calls with actionable errors', async () => {
     await expect(browserHost.appMode.migration.prepare('/fixture/new')).rejects.toThrow('desktop app runtime')
     await expect(browserHost.appMode.migration.start('migration-1')).rejects.toThrow('desktop app runtime')

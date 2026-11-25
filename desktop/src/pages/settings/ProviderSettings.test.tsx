@@ -713,6 +713,45 @@ describe('default provider settings ownership', () => {
     expect(saved).not.toHaveProperty('modelContext')
   })
 
+  it.each([
+    ['saved-fennoai', 'fixture-subagent'],
+    ['saved-xuanshuapi', 'fixture-subagent'],
+    ['saved-xuanshuapi', 'inherit'],
+    ['saved-xuanshuapi', ''],
+  ])('retains the active provider %s subagent override %j when reopening and saving JSON', async (activeId, subagentModel) => {
+    vi.spyOn(providersApi, 'list').mockResolvedValue({ providers: savedProviders, activeId })
+    vi.spyOn(providersApi, 'getSettings').mockResolvedValue({
+      providerEnvOwner: activeId,
+      env: { CLAUDE_CODE_SUBAGENT_MODEL: subagentModel },
+    })
+    vi.spyOn(providersApi, 'update').mockImplementation(async (id, input) => ({
+      provider: { ...savedProviders.find((saved) => saved.id === id)!, ...input } as SavedProvider,
+    }))
+
+    render(<ProviderSettings />)
+    fireEvent.click(within(await screen.findByTestId(`provider-${activeId}`)).getByRole('button', { name: 'Edit' }))
+    const dialog = within(screen.getByRole('dialog'))
+    await waitFor(() => expect(settingsJsonOf(dialog)).toContain('ANTHROPIC_BASE_URL'))
+    expect(JSON.parse(settingsJsonOf(dialog)).env.CLAUDE_CODE_SUBAGENT_MODEL).toBe(subagentModel)
+    expect(JSON.parse(settingsJsonOf(dialog))).not.toHaveProperty('providerEnvOwner')
+    fireEvent.click(dialog.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(providersApi.updateSettings).toHaveBeenCalledWith(expect.objectContaining({
+      env: expect.objectContaining({ CLAUDE_CODE_SUBAGENT_MODEL: subagentModel }),
+    }), activeId))
+  })
+
+  it('does not preview a previous provider override while activation settings are stale', async () => {
+    vi.spyOn(providersApi, 'list').mockResolvedValue({ providers: savedProviders, activeId: 'saved-fennoai' })
+    vi.spyOn(providersApi, 'getSettings').mockResolvedValue({
+      providerEnvOwner: 'saved-xuanshuapi', env: { CLAUDE_CODE_SUBAGENT_MODEL: 'old-provider-only' },
+    })
+    render(<ProviderSettings />)
+    fireEvent.click(within(await screen.findByTestId('provider-saved-fennoai')).getByRole('button', { name: 'Edit' }))
+    const dialog = within(screen.getByRole('dialog'))
+    await waitFor(() => expect(settingsJsonOf(dialog)).toContain('ANTHROPIC_BASE_URL'))
+    expect(JSON.parse(settingsJsonOf(dialog)).env).not.toHaveProperty('CLAUDE_CODE_SUBAGENT_MODEL')
+  })
+
   it.each([null, 'saved-xuanshuapi'])('keeps the draft and refreshes the default after a settings ownership conflict (default=%s)', async (destination) => {
     let serverActive: string | null = 'saved-fennoai'
     vi.spyOn(providersApi, 'list').mockImplementation(async () => ({ providers: savedProviders, activeId: serverActive }))
@@ -1068,6 +1107,49 @@ describe('provider list tabs and search', () => {
     const dialog = within(screen.getByRole('dialog'))
     expect(dialog.getByRole('button', { name: 'Kimi' })).toHaveAttribute('aria-pressed', 'true')
     expect(dialog.getByDisplayValue('Kimi')).toBeInTheDocument()
+  })
+
+  it('shows unsaved family entry cards without activation/counts and saves a split key without changing the default', async () => {
+    // A custom provider may have a built-in display name. It is not the built-in family.
+    const custom = { ...savedProviders[0]!, name: '落叶AI · GPT' }
+    const records = [custom]
+    vi.mocked(providersApi.list).mockImplementation(async () => ({ providers: [...records], activeId: custom.id }))
+    vi.spyOn(providersApi, 'fetchModels').mockResolvedValue({ ok: true, endpoint: 'fixture', models: [{ id: 'gpt-5' }, { id: 'claude-opus-5' }] })
+    const create = vi.spyOn(providersApi, 'create').mockImplementation(async input => {
+      const provider = { ...input, id: input.models.main.startsWith('gpt-') ? 'saved-gpt' : 'saved-claude', apiFormat: input.apiFormat!, apiKey: 'masked' }
+      records.push(provider)
+      return { provider }
+    })
+    const activate = vi.spyOn(providersApi, 'activate')
+    const update = vi.spyOn(providersApi, 'update')
+    vi.spyOn(providersApi, 'balance').mockResolvedValue({ balance: { ok: false, errorCode: 'network', message: 'offline fixture' } })
+    render(<ProviderSettings />)
+    const placeholder = within(await screen.findByRole('region', { name: '落叶AI · GPT' }))
+    expect(screen.getByRole('region', { name: '落叶AI · Claude' })).toBeVisible()
+    expect(screen.getByRole('tab', { name: /API Key/ })).toHaveTextContent(/API Key\s*1/)
+    expect(placeholder.queryByRole('button', { name: 'Set as default' })).toBeNull()
+    expect(create).not.toHaveBeenCalled()
+    fireEvent.click(placeholder.getByRole('button', { name: 'Configure key' }))
+    const dialog = within(screen.getByRole('dialog'))
+    fireEvent.click(dialog.getByRole('radio', { name: 'GPT' }))
+    fireEvent.change(dialog.getByLabelText('API Key'), { target: { value: 'fake-gpt-key' } })
+    fireEvent.click(dialog.getByRole('button', { name: 'Save' }))
+    expect(await screen.findByTestId('provider-saved-gpt')).toBeVisible()
+    expect(screen.queryByRole('region', { name: '落叶AI · GPT' })).toBeNull()
+    expect(screen.getByRole('region', { name: '落叶AI · Claude' })).toBeVisible()
+    expect(screen.getByRole('tab', { name: /API Key/ })).toHaveTextContent(/API Key\s*2/)
+    expect(create).toHaveBeenCalledTimes(1)
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({ apiKey: 'fake-gpt-key', models: expect.objectContaining({ main: 'gpt-5' }) }))
+    fireEvent.click(within(screen.getByRole('region', { name: '落叶AI · Claude' })).getByRole('button', { name: 'Configure key' }))
+    const split = within(screen.getByRole('dialog'))
+    expect(split.getByRole('radio', { name: 'Claude' })).toHaveAttribute('aria-checked', 'true')
+    fireEvent.change(split.getByLabelText('API Key'), { target: { value: 'fake-separate-claude-key' } })
+    fireEvent.click(split.getByRole('button', { name: 'Save' }))
+    expect(await screen.findByTestId('provider-saved-claude')).toBeVisible()
+    expect(create.mock.calls.map(([input]) => input.apiKey)).toEqual(['fake-gpt-key', 'fake-separate-claude-key'])
+    expect(update).not.toHaveBeenCalled()
+    expect(activate).not.toHaveBeenCalled()
+    expect(useProviderStore.getState().activeId).toBe(custom.id)
   })
 
   it('opens on Official sign-in when one was made the default, and stays there when the default changes', async () => {

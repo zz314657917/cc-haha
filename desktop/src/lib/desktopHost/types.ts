@@ -27,6 +27,52 @@ export type DesktopHostCapabilities = Record<DesktopHostCapability, boolean>
 
 export type DesktopHostUnlisten = () => void
 
+export type AccountErrorCode =
+  | 'cancelled'
+  | 'timeout'
+  | 'unavailable'
+  | 'unauthorized'
+  | 'invalid-state'
+  | 'network'
+  | 'invalid-response'
+  | 'not-found'
+  | 'rate-limited'
+  | 'unknown'
+
+export type AccountResult<T> =
+  | { ok: true; data: T }
+  | { ok: false; error: { code: AccountErrorCode; message: string } }
+
+export type AccountProfile = {
+  id: string
+  displayName: string
+  email?: string
+}
+
+export type AccountStatus = {
+  status: 'signed-out' | 'authorizing' | 'signed-in' | 'unavailable'
+  authenticated: boolean
+  profile?: AccountProfile
+  unreadCount?: number
+}
+
+export type AccountAnnouncement = {
+  id: string
+  title: string
+  summary?: string
+  body?: string
+  publishedAt: string
+  readAt?: string
+}
+
+export type AccountAnnouncementPage = {
+  items: AccountAnnouncement[]
+  nextCursor?: string
+}
+
+export type AccountAnnouncementListInput = { cursor?: string; limit?: number }
+export type AccountAnnouncementReadInput = { id: string }
+
 export type DesktopPetInteractiveRegion = {
   x: number
   y: number
@@ -67,6 +113,8 @@ export type AppliedAppearance = {
    * repaint when it next starts in the morning.
    */
   lightBackground: string
+  /** Dark preference, even when the currently applied theme is light. Older hosts may omit it. */
+  darkBackground?: string
   /** Whether the renderer is tracking the OS setting rather than a fixed pick. */
   followSystem: boolean
 }
@@ -429,6 +477,16 @@ export type DesktopPublicAccessStatus = Omit<DesktopPublicAccessConfiguration, '
 }
 
 export type DesktopHost = {
+  account: {
+    getStatus(): Promise<AccountResult<AccountStatus>>
+    beginLogin(): Promise<AccountResult<void>>
+    cancelLogin(): Promise<AccountResult<void>>
+    signOut(): Promise<AccountResult<void>>
+    getProfile(): Promise<AccountResult<AccountProfile>>
+    listAnnouncements(input?: AccountAnnouncementListInput): Promise<AccountResult<AccountAnnouncementPage>>
+    markAnnouncementRead(input: AccountAnnouncementReadInput): Promise<AccountResult<void>>
+    markAllAnnouncementsRead(): Promise<AccountResult<void>>
+  }
   publicAccess: {
     getStatus(): Promise<DesktopPublicAccessStatus>
     configure(configuration: DesktopPublicAccessConfiguration): Promise<DesktopPublicAccessStatus>
