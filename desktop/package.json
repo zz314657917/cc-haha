@@ -66,6 +66,13 @@
     },
     "win": {
       "target": "nsis",
+      "publish": {
+        "provider": "github",
+        "owner": "zz314657917",
+        "repo": "cc-haha",
+        "channel": "latest",
+        "releaseType": "release"
+      },
       "icon": "src-tauri/icons/icon.ico",
       "extraResources": [
         { "from": "src-tauri/icons/icon.ico", "to": "app-icon.ico" },
