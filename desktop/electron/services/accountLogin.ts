@@ -4,6 +4,8 @@ import type { AccountErrorCode } from '../../src/lib/desktopHost/types'
 
 export const ACCOUNT_ORIGIN = 'https://ai.3zapi.com'
 export const DESKTOP_CLIENT = 'luoyeai-desktop'
+export const SUMMARY_SCOPE = 'account-summary:read'
+export const MODEL_SCOPE = 'model-key:provision'
 const CALLBACK_PATH = '/luoyeai/callback'
 
 export class AccountFailure extends Error {
@@ -11,7 +13,7 @@ export class AccountFailure extends Error {
 }
 
 /** No renderer data participates in the listener, browser origin, redirect, or verifier. */
-export function authorizeInBrowser(open: (url: string) => Promise<void>, signal: AbortSignal) {
+export function authorizeInBrowser(open: (url: string) => Promise<void>, signal: AbortSignal, requestModel = false) {
   const state = randomBytes(32).toString('base64url')
   const verifier = randomBytes(32).toString('base64url')
   return new Promise<{ code: string; redirectUri: string; verifier: string }>((resolve, reject) => {
@@ -67,7 +69,7 @@ export function authorizeInBrowser(open: (url: string) => Promise<void>, signal:
       redirectUri = `http://127.0.0.1:${address.port}${CALLBACK_PATH}`
       const authorize = new URL('/desktop/authorize', ACCOUNT_ORIGIN)
       authorize.search = new URLSearchParams({
-        client_id: DESKTOP_CLIENT, redirect_uri: redirectUri, response_type: 'code',
+        client_id: DESKTOP_CLIENT, redirect_uri: redirectUri, response_type: 'code', scope: requestModel ? `${SUMMARY_SCOPE} ${MODEL_SCOPE}` : SUMMARY_SCOPE,
         code_challenge: createHash('sha256').update(verifier).digest('base64url'), code_challenge_method: 'S256', state,
       }).toString()
       Promise.resolve().then(() => open(authorize.href)).catch(() => fail(new AccountFailure('unavailable')))

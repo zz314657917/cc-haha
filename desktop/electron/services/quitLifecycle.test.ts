@@ -35,6 +35,7 @@ function quitFixture(failingStep?: string, rejectServer = false, rejectPublicAcc
   const context = {
     app, isQuitting: false, quitCleanupStarted: false, quitCleanupFinished: false,
     dataMigration,
+    modelRelay: { close: vi.fn() },
     accountService: undefined as { cancelLogin(): Promise<unknown> } | undefined,
     preventSleepService: { dispose: cleanup('preventSleep') },
     idlePowerService: { dispose: cleanup('idlePower') },

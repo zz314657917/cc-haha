@@ -2,7 +2,7 @@
   "name": "luoyeai-desktop",
   "productName": "LuoyeAI",
   "private": true,
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "落叶AI desktop client. Based on cc-haha (https://github.com/NanmiCoder/cc-haha); unofficial modified version.",
   "homepage": "https://cn-api.3zapi.com",
   "author": {

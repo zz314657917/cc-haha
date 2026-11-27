@@ -43,6 +43,24 @@ async function allSucceeded(work: Promise<unknown>[]) {
   expect(results.map(result => result.status)).toEqual(work.map(() => 'fulfilled'))
 }
 
+test('account configuration activates on empty config, never overwrites manual settings and rejects stale sync', async () => {
+  const service = new ProviderService()
+  await service.syncDesktopAccountProvider('42', 1)
+  const first = await service.listProviders()
+  expect(first.activeId).toBe('luoye-account-42')
+  expect(first.providers[0]?.apiKey).toBe('')
+  expect(await service.getManagedSettings()).toMatchObject({ env: { ANTHROPIC_API_KEY: 'proxy-managed', ANTHROPIC_BASE_URL: expect.stringContaining('/proxy/providers/luoye-account-42') } })
+  await expect(service.updateProvider('luoye-account-42', { baseUrl: 'https://fixture.invalid' })).rejects.toThrow()
+  const manual = await service.addProvider(input('manual'))
+  await service.activateProvider(manual.id)
+  await service.syncDesktopAccountProvider(null, 3)
+  await service.syncDesktopAccountProvider('42', 2)
+  await service.syncDesktopAccountProvider('24', 4)
+  expect(await service.listProviders()).toMatchObject({ activeId: manual.id, providers: [manual, expect.objectContaining({ id: 'luoye-account-24', apiKey: '' })] })
+  await service.syncDesktopAccountProvider(null, 5)
+  expect(await service.listProviders()).toMatchObject({ activeId: manual.id, providers: [manual] })
+})
+
 test('concurrent creates and a bulk import across instances keep every provider', async () => {
   await allSucceeded([
     ...Array.from({ length: 6 }, (_, i) => new ProviderService().addProvider(input(`created-${i}`))),

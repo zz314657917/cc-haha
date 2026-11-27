@@ -511,7 +511,8 @@ export function ProviderSettings({ browserMode = false }: { browserMode?: boolea
     const formatBadge = providerFormatBadge(provider, preset, t)
     const isMagpie = isMagpieProvider(provider)
     const family = luoyeAiFamily(provider)
-    const canChangeLuoyeKey = family && Object.values(LUOYEAI_ENDPOINTS).includes(provider.baseUrl)
+    const accountManaged = /^luoye-account-[1-9]\d{0,15}$/.test(provider.id)
+    const canChangeLuoyeKey = !accountManaged && family && Object.values(LUOYEAI_ENDPOINTS).includes(provider.baseUrl)
 
     return (
       <SortableProviderCard
@@ -568,10 +569,10 @@ export function ProviderSettings({ browserMode = false }: { browserMode?: boolea
         secondaryActions={!isActive ? (
           <>
             <Button variant="ghost" size="sm" onClick={() => handleActivate(provider.id)}>{t('settings.providers.setDefault')}</Button>
-            <Button variant="danger-ghost" size="sm" onClick={() => handleDelete(provider)}>{t('common.delete')}</Button>
+            {!accountManaged && <Button variant="danger-ghost" size="sm" onClick={() => handleDelete(provider)}>{t('common.delete')}</Button>}
           </>
         ) : null}
-        actions={(
+        actions={!accountManaged && (
           <>
             {isLuoyeAiProvider(provider) && <ProviderBalanceBadge providerId={provider.id} />}
             {!browserMode && canChangeLuoyeKey && family && <Button variant="secondary" size="sm" onClick={() => setKeyDialog({ initialScope: family, target: provider })}>{t('luoyeAi.replace')}</Button>}

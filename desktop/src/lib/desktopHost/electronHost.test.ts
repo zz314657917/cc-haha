@@ -13,17 +13,19 @@ describe('electron desktop host', () => {
     await account.cancelLogin()
     await account.signOut()
     await account.getProfile()
+    await account.getSummary()
     await account.listAnnouncements({ limit: 10 })
     await account.markAnnouncementRead({ id: '2' })
     await account.markAllAnnouncementsRead()
     expect(invoke.mock.calls).toEqual([
       [ELECTRON_IPC_CHANNELS.accountGetStatus, undefined], [ELECTRON_IPC_CHANNELS.accountBeginLogin, undefined],
       [ELECTRON_IPC_CHANNELS.accountCancelLogin, undefined], [ELECTRON_IPC_CHANNELS.accountSignOut, undefined],
-      [ELECTRON_IPC_CHANNELS.accountGetProfile, undefined], [ELECTRON_IPC_CHANNELS.accountListAnnouncements, { limit: 10 }],
+      [ELECTRON_IPC_CHANNELS.accountGetProfile, undefined], [ELECTRON_IPC_CHANNELS.accountGetSummary, undefined],
+      [ELECTRON_IPC_CHANNELS.accountListAnnouncements, { limit: 10 }],
       [ELECTRON_IPC_CHANNELS.accountMarkAnnouncementRead, { id: '2' }], [ELECTRON_IPC_CHANNELS.accountMarkAllAnnouncementsRead, undefined],
     ])
     await expect(account.markAnnouncementRead({ id: '../token' })).rejects.toThrow('Invalid Electron IPC payload')
-    expect(invoke).toHaveBeenCalledTimes(8)
+    expect(invoke).toHaveBeenCalledTimes(9)
   })
   it('only exposes validated configuration, status and cancellation for idle power actions', async () => {
     const invoke = vi.fn().mockResolvedValue(undefined)

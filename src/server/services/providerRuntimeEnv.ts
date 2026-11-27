@@ -596,7 +596,8 @@ export function buildProviderManagedEnv(
   // preset with per-model rules resolves to an OpenAI format here, which also
   // forces the proxy — the only place those rules are applied.
   const needsProxy = providerNeedsProxy(apiFormat, provider.supportsNestedToolResultMedia)
-  const proxyPath = options?.proxyPath ?? '/proxy'
+  // Bind launched chats to their account even if the active default changes later.
+  const proxyPath = options?.proxyPath ?? (/^luoye-account-[1-9]\d{0,15}$/.test(provider.id) ? `/proxy/providers/${provider.id}` : '/proxy')
   const serverPort = options?.serverPort ?? 3456
   const baseUrl = needsProxy
     ? `http://127.0.0.1:${serverPort}${proxyPath}`

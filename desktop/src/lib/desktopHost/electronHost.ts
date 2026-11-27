@@ -66,6 +66,7 @@ export function createElectronHost(bridge: ElectronHostBridge): DesktopHost {
       cancelLogin: () => invoke(ELECTRON_IPC_CHANNELS.accountCancelLogin),
       signOut: () => invoke(ELECTRON_IPC_CHANNELS.accountSignOut),
       getProfile: () => invoke(ELECTRON_IPC_CHANNELS.accountGetProfile),
+      getSummary: () => invoke(ELECTRON_IPC_CHANNELS.accountGetSummary),
       listAnnouncements: input => invoke(ELECTRON_IPC_CHANNELS.accountListAnnouncements, input),
       markAnnouncementRead: input => invoke(ELECTRON_IPC_CHANNELS.accountMarkAnnouncementRead, input),
       markAllAnnouncementsRead: () => invoke(ELECTRON_IPC_CHANNELS.accountMarkAllAnnouncementsRead),

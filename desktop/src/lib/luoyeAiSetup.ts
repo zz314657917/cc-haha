@@ -112,6 +112,8 @@ export type LuoyeAiScope = 'shared' | LuoyeAiFamily
 
 /** Identity is based on the endpoint/preset and model, not the editable label or masked key. */
 export function luoyeAiFamily(provider: Pick<SavedProvider, 'presetId' | 'baseUrl' | 'models'>): LuoyeAiFamily | null {
+  // Account-managed records are separate from the manual key setup families.
+  if ('id' in provider && typeof provider.id === 'string' && /^luoye-account-[1-9]\d{0,15}$/.test(provider.id)) return null
   if (!isLuoyeAiProvider(provider)) return null
   const main = provider.models.main.trim()
   return /^claude-/i.test(main) ? 'claude' : isGptChatModel(main) ? 'gpt' : null

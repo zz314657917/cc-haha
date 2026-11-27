@@ -95,7 +95,7 @@ describe('desktop navigation rail', () => {
     expect(card.getByText('yu@example.test')).toBeVisible()
     for (const label of ['Points balance', 'Current concurrency', 'Today’s token usage']) expect(card.getByText(label)).toBeVisible()
     expect(card.getByText('✪')).toBeVisible()
-    expect(card.getAllByText('—')).toHaveLength(3)
+    expect(card.getAllByText('—')).toHaveLength(4)
     const recharge = card.getByRole('button', { name: 'Recharge' })
     expect(open).not.toHaveBeenCalled()
     fireEvent.click(recharge)
@@ -106,6 +106,69 @@ describe('desktop navigation rail', () => {
     fireEvent.click(recharge)
     await waitFor(() => expect(card.queryByRole('alert')).toBeNull())
     expect(open).toHaveBeenCalledTimes(2)
+  })
+
+  it('fetches summary only for an open signed-in account, on opening and manual refresh', async () => {
+    let status = guest
+    const data = { userId: '42', points: 0, concurrencyCurrent: 0, concurrencyLimit: null, todayTokens: null, todayRequests: 8 }
+    const getSummary = vi.fn<DesktopHost['account']['getSummary']>().mockResolvedValueOnce(ok(data)).mockResolvedValueOnce(ok({ ...data, userId: '43', points: 999 }))
+    mount({ getStatus: async () => ok(status), getSummary })
+    await act(async () => { fireEvent.click(button('Sign in')) })
+    expect(getSummary).not.toHaveBeenCalled()
+    fireEvent.click(button('Not now'))
+    status = user('42')
+    await act(async () => { fireEvent.focus(window) })
+    await act(async () => { fireEvent.click(button(/1 unread/)) })
+    expect(getSummary).not.toHaveBeenCalled()
+    fireEvent.click(button('42'))
+    expect(await screen.findByText('0 / —')).toBeVisible()
+    expect(screen.getByText('0')).toHaveTextContent('✪ 0')
+    expect(screen.getByText('8')).toBeVisible()
+    await act(async () => { fireEvent.focus(window) })
+    expect(getSummary).toHaveBeenCalledTimes(1)
+    await act(async () => { fireEvent.click(button('Refresh account summary')) })
+    expect(getSummary).toHaveBeenCalledTimes(2)
+    expect(screen.getAllByText('—')).toHaveLength(4)
+    expect(screen.queryByText('999')).toBeNull()
+    expect(button('Sign out')).toBeVisible()
+  })
+
+  it('guides a legacy user through explicit sign-out and sign-in to see summary values', async () => {
+    let status = user('42')
+    const getSummary = vi.fn<DesktopHost['account']['getSummary']>()
+      .mockResolvedValueOnce({ ok: false, error: { code: 'insufficient-scope', message: 'private diagnostic' } })
+      .mockResolvedValueOnce(ok({ userId: '42', points: 0, concurrencyCurrent: 0, concurrencyLimit: 0, todayTokens: 0, todayRequests: 0 }))
+    const signOut = vi.fn(async () => { status = guest; return ok(undefined) })
+    const beginLogin = vi.fn(async () => { status = user('42'); return ok(undefined) })
+    mount({ getStatus: async () => ok(status), getSummary, signOut, beginLogin })
+    fireEvent.click(await screen.findByRole('button', { name: '42' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('To view your account summary, sign out and sign in again.')
+    expect(screen.getAllByText('—')).toHaveLength(4)
+    expect(signOut).not.toHaveBeenCalled()
+    fireEvent.click(button('Sign out'))
+    const login = await screen.findByRole('button', { name: 'Sign in with your browser' })
+    expect(beginLogin).not.toHaveBeenCalled()
+    fireEvent.click(login)
+    expect(await screen.findByText('0 / 0')).toBeVisible()
+    expect(screen.getAllByText('0')).toHaveLength(3)
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('ignores a late summary from a previous panel after switching accounts', async () => {
+    let identity = '42'
+    const data = { userId: identity, points: 123, concurrencyCurrent: null, concurrencyLimit: null, todayTokens: null, todayRequests: null }
+    let finish!: (value: AccountResult<typeof data>) => void
+    const getSummary = vi.fn<DesktopHost['account']['getSummary']>()
+      .mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+      .mockResolvedValueOnce(ok({ ...data, userId: '43', points: 456 }))
+    mount({ getStatus: async () => ok(user(identity)), getSummary })
+    fireEvent.click(await screen.findByRole('button', { name: '42' }))
+    identity = '43'
+    fireEvent.focus(window)
+    expect(await screen.findByText('456')).toBeVisible()
+    await act(async () => finish(ok(data)))
+    expect(screen.getByText('456')).toBeVisible()
+    expect(screen.queryByText('123')).toBeNull()
   })
 
   it('shows ten notices after login, updates the unread count, and hides the feed on logout', async () => {

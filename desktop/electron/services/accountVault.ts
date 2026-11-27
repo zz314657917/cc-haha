@@ -17,7 +17,15 @@ type Encryption = {
 
 /** New, separate encrypted binary file. No access token, account metadata or model settings. */
 export function createAccountVault(directory: string, storage: Encryption, platform = process.platform): AccountVault {
-  const file = path.join(directory, 'luoye-account-refresh-v1.bin')
+  return createEncryptedVault(directory, storage, platform, 'luoye-account-refresh-v1.bin', false)
+}
+
+export function createModelVault(directory: string, storage: Encryption, platform = process.platform): AccountVault {
+  return createEncryptedVault(directory, storage, platform, 'luoye-account-model-v1.bin', true)
+}
+
+function createEncryptedVault(directory: string, storage: Encryption, platform: NodeJS.Platform, name: string, required: boolean): AccountVault {
+  const file = path.join(directory, name)
   function secure() {
     // The host enables use-mock-keychain on macOS. Never use that key, Linux
     // basic_text, or an unknown backend as durable credential storage.
@@ -30,10 +38,14 @@ export function createAccountVault(directory: string, storage: Encryption, platf
     save(token) {
       const temp = `${file}.${randomUUID()}.tmp`
       try {
-        if (!secure()) return
+        if (!secure()) {
+          if (required) throw new Error('Protected model storage unavailable')
+          return
+        }
         writeFileSync(temp, storage.encryptString(token), { mode: 0o600, flag: 'wx' })
         renameSync(temp, file)
       } catch {
+        if (required) throw new Error('Protected model storage unavailable')
         // The active session still works in memory. The old rotated refresh is invalid.
       } finally { rmSync(temp, { force: true }) }
     },

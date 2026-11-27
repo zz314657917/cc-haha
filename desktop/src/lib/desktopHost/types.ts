@@ -32,6 +32,7 @@ export type AccountErrorCode =
   | 'timeout'
   | 'unavailable'
   | 'unauthorized'
+  | 'insufficient-scope'
   | 'invalid-state'
   | 'network'
   | 'invalid-response'
@@ -49,11 +50,21 @@ export type AccountProfile = {
   email?: string
 }
 
+export type AccountSummary = {
+  userId: string
+  points: number | null
+  concurrencyCurrent: number | null
+  concurrencyLimit: number | null
+  todayTokens: number | null
+  todayRequests: number | null
+}
+
 export type AccountStatus = {
   status: 'signed-out' | 'authorizing' | 'signed-in' | 'unavailable'
   authenticated: boolean
   profile?: AccountProfile
   unreadCount?: number
+  modelSetup?: 'ready' | 'failed'
 }
 
 export type AccountAnnouncement = {
@@ -483,6 +494,7 @@ export type DesktopHost = {
     cancelLogin(): Promise<AccountResult<void>>
     signOut(): Promise<AccountResult<void>>
     getProfile(): Promise<AccountResult<AccountProfile>>
+    getSummary(): Promise<AccountResult<AccountSummary>>
     listAnnouncements(input?: AccountAnnouncementListInput): Promise<AccountResult<AccountAnnouncementPage>>
     markAnnouncementRead(input: AccountAnnouncementReadInput): Promise<AccountResult<void>>
     markAllAnnouncementsRead(): Promise<AccountResult<void>>

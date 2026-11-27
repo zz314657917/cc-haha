@@ -10,6 +10,8 @@ import * as fs from 'fs/promises'
 import * as path from 'path'
 import * as os from 'os'
 import { ApiError } from '../middleware/errorHandler.js'
+import { desktopModelTransport, isDesktopAccountProvider, setDesktopModelSession } from './desktopModelRelay.js'
+import { PROVIDER_PRESETS } from '../config/providerPresets.js'
 import { buildOpenaiEndpoint } from '../proxy/openaiEndpoint.js'
 import { normalizeAnthropicBaseUrl } from '../../services/api/anthropicBaseUrl.js'
 import { getOpenAIModelCatalogEntry } from '../../services/openaiAuth/models.js'
@@ -310,6 +312,46 @@ export class ProviderService {
     })
   }
 
+  // Serialized with manual provider edits. Only opaque account IDs and a
+  // keyless preset enter the index; resident credentials live in Electron.
+  // Only the dedicated API singleton consumes signed control revisions.
+  private desktopModelRevision = -1
+  async syncDesktopAccountProvider(userId: string | null, revision: number, models?: ModelMapping): Promise<void> {
+    const target = userId === null ? null : `luoye-account-${userId}`
+    if (target && !isDesktopAccountProvider(target)) throw ApiError.badRequest('Invalid account')
+    await this.withIndexMutation(async () => {
+      if (revision <= this.desktopModelRevision) return
+      const index = await this.readIndex()
+      const oldActive = index.activeId
+      const stale = index.providers.filter(p => isDesktopAccountProvider(p.id) && p.id !== target)
+      index.providers = index.providers.filter(p => !stale.includes(p))
+      index.providerOrder = index.providerOrder.filter(id => !stale.some(p => p.id === id))
+      if (oldActive && stale.some(p => p.id === oldActive)) index.activeId = null
+      const preset = PROVIDER_PRESETS.find(p => p.id === 'luoyeai')!
+      let fresh: SavedProvider | undefined
+      if (target && !index.providers.some(p => p.id === target)) {
+        const settings = await this.readSettings()
+        const env = settings.env as Record<string, unknown> | undefined
+        const hasManual = index.activeId || index.providers.length || (!isDesktopAccountProvider(String(settings.providerEnvOwner)) &&
+          (settings.providerEnvOwner || env?.ANTHROPIC_API_KEY || env?.ANTHROPIC_AUTH_TOKEN || env?.ANTHROPIC_BASE_URL)) ||
+          (await this.evaluateProviderAuth(index, CLAUDE_OFFICIAL_PROVIDER_ID, true)).hasAuth
+        fresh = { id: target, presetId: preset.id, name: `${preset.name} · ${userId}`, apiKey: '', baseUrl: 'https://ai.3zapi.com/v1',
+          apiFormat: 'openai_responses', runtimeKind: 'anthropic_compatible', models: preset.defaultModels, proxy: { mode: 'direct' } }
+        index.providerOrder = appendNewProviderToOrder(index.providerOrder, target, index.providers)
+        index.providers.push(fresh)
+        if (!hasManual) index.activeId = target
+      }
+      const existing = index.providers.find(p => p.id === target)
+      const mappingChanged = !!(existing && models && JSON.stringify(existing.models) !== JSON.stringify(models))
+      if (existing && models) existing.models = models
+      if (fresh || stale.length || mappingChanged) await this.writeIndex(index)
+      if (target && index.activeId === target) await this.syncToSettings(index.providers.find(p => p.id === target)!)
+      else if (oldActive && isDesktopAccountProvider(oldActive) && !index.activeId) await this.clearProviderFromSettings()
+      setDesktopModelSession(userId, revision)
+      this.desktopModelRevision = revision
+    })
+  }
+
   // --- CRUD ---
 
   async listProviders(): Promise<{ providers: SavedProvider[]; activeId: string | null; providerOrder: string[] }> {
@@ -524,6 +566,7 @@ export class ProviderService {
   }
 
   async updateProvider(id: string, input: UpdateProviderInput): Promise<SavedProvider> {
+    if (isDesktopAccountProvider(id)) throw ApiError.badRequest('Account model settings are managed by desktop login. Add a separate provider for manual settings.')
     const { index, updated } = await this.withIndexMutation(async () => {
       const index = await this.readIndex()
       const idx = index.providers.findIndex((p) => p.id === id)
@@ -597,6 +640,7 @@ export class ProviderService {
   }
 
   async deleteProvider(id: string): Promise<void> {
+    if (isDesktopAccountProvider(id)) throw ApiError.badRequest('Sign out to remove this account provider.')
     return this.withIndexMutation(async () => {
       const index = await this.readIndex()
       const idx = index.providers.findIndex((p) => p.id === id)
@@ -985,6 +1029,12 @@ export class ProviderService {
     proxy?: ProviderProxyConfig
   } | null> {
     const toProxyConfig = (provider: SavedProvider) => {
+      if (isDesktopAccountProvider(provider.id)) {
+        const transport = desktopModelTransport(provider.id)
+        return transport ? { ...transport, id: provider.id, name: provider.name, apiFormat: 'openai_responses' as const,
+          authStrategy: 'auth_token' as const, modelApiFormats: getPresetModelApiFormats('luoyeai').map(({ prefixes, apiFormat }) => ({ prefixes, apiFormat })),
+          supportsNestedToolResultMedia: true, upstreamHeaders: {}, proxy: { mode: 'direct' as const } } : null
+      }
       const presetDefaultEnv = getPresetDefaultEnv(provider.presetId)
       return {
         id: provider.id,

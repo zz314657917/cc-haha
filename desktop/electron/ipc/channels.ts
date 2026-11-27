@@ -4,6 +4,7 @@ export const ELECTRON_IPC_CHANNELS = {
   accountCancelLogin: 'desktop:account:cancel-login',
   accountSignOut: 'desktop:account:sign-out',
   accountGetProfile: 'desktop:account:get-profile',
+  accountGetSummary: 'desktop:account:get-summary',
   accountListAnnouncements: 'desktop:account:list-announcements',
   accountMarkAnnouncementRead: 'desktop:account:mark-announcement-read',
   accountMarkAllAnnouncementsRead: 'desktop:account:mark-all-announcements-read',

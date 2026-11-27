@@ -334,6 +334,7 @@ export const ELECTRON_IPC_VALIDATORS = {
   [ELECTRON_IPC_CHANNELS.accountCancelLogin]: noPayload,
   [ELECTRON_IPC_CHANNELS.accountSignOut]: noPayload,
   [ELECTRON_IPC_CHANNELS.accountGetProfile]: noPayload,
+  [ELECTRON_IPC_CHANNELS.accountGetSummary]: noPayload,
   [ELECTRON_IPC_CHANNELS.accountListAnnouncements]: value => value === undefined || (
     isRecord(value) && hasOnlyKeys(value, ['cursor', 'limit'])
     && (value.cursor === undefined || (typeof value.cursor === 'string' && /^\d{1,9}$/.test(value.cursor)))

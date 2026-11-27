@@ -143,6 +143,8 @@ if (mode === 'adapters') {
   process.env.CALLER_DIR ||= process.cwd()
   process.argv = [process.argv[0]!, process.argv[1]!, ...args]
 
+  // Consume the private parent launch capability before user environment setup.
+  if (mode === 'server') (await import('../../src/server/services/desktopModelRelay.js')).consumeDesktopModelLaunchEnv()
   await import('../../preload.ts')
 
   if (mode === 'server') {

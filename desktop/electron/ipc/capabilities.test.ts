@@ -11,7 +11,9 @@ import {
 describe('Electron IPC capabilities', () => {
   it('restricts LuoyeAI account IPC to fixed actions and structured positive announcement IDs', () => {
     const channels = Object.values(ELECTRON_IPC_CHANNELS).filter(channel => channel.startsWith('desktop:account:'))
-    expect(channels).toHaveLength(8)
+    expect(channels).toHaveLength(9)
+    expect(validateElectronIpcPayload(ELECTRON_IPC_CHANNELS.accountGetSummary, undefined)).toBe(true)
+    expect(validateElectronIpcPayload(ELECTRON_IPC_CHANNELS.accountGetSummary, { user_id: 42 })).toBe(false)
     for (const channel of channels) {
       expect(isElectronIpcChannelAllowedForPetWindow(channel)).toBe(false)
       expect(validateElectronIpcPayload(channel, { url: 'https://example.test' })).toBe(false)

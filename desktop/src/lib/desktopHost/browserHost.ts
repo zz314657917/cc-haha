@@ -50,6 +50,7 @@ export const browserHost: DesktopHost = {
     cancelLogin: () => accountUnavailable(),
     signOut: () => accountUnavailable(),
     getProfile: () => accountUnavailable(),
+    getSummary: () => accountUnavailable(),
     listAnnouncements: () => accountUnavailable(),
     markAnnouncementRead: () => accountUnavailable(),
     markAllAnnouncementsRead: () => accountUnavailable(),

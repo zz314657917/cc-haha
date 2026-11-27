@@ -1,13 +1,22 @@
 import type { AccountAnnouncement, AccountAnnouncementListInput, AccountAnnouncementReadInput, AccountErrorCode, AccountProfile, AccountResult, AccountStatus, DesktopHost } from '../../src/lib/desktopHost/types'
-import { ACCOUNT_ORIGIN, AccountFailure, authorizeInBrowser, DESKTOP_CLIENT } from './accountLogin'
+import { ACCOUNT_ORIGIN, AccountFailure, authorizeInBrowser, DESKTOP_CLIENT, MODEL_SCOPE, SUMMARY_SCOPE } from './accountLogin'
+import type { AccountModel } from './accountModel'
 import type { AccountVault } from './accountVault'
 
 const DESKTOP_ACCESS = /^dsa_[A-Za-z0-9_-]{43}$/
 const DESKTOP_REFRESH = /^dsr_[A-Za-z0-9_-]{43}$/
-const SCOPE = 'profile announcements:read announcements:read-state'
+const LEGACY_GRANTS = ['profile', 'announcements:read', 'announcements:read-state']
+function validScope(scope: unknown): boolean {
+  if (typeof scope !== 'string') return false
+  const grants = new Set(scope.split(' '))
+  grants.delete(SUMMARY_SCOPE)
+  grants.delete(MODEL_SCOPE)
+  return grants.size === LEGACY_GRANTS.length && LEGACY_GRANTS.every(grant => grants.has(grant))
+}
 const messages: Record<AccountErrorCode, string> = {
   cancelled: 'Login cancelled.', timeout: 'Login timed out.', unavailable: 'The desktop account service is unavailable.',
   unauthorized: 'Please sign in again.', 'invalid-state': 'Invalid login state.', network: 'Cannot reach the account service.',
+  'insufficient-scope': 'Account summary permission is required.',
   'invalid-response': 'Unexpected response from the account service.', 'not-found': 'Announcement not found.',
   'rate-limited': 'Please try again later.', unknown: 'Account action failed.',
 }
@@ -22,6 +31,9 @@ function text(value: unknown): string {
 function id(value: unknown): string {
   if (typeof value !== 'number' || !Number.isSafeInteger(value) || value <= 0) throw new AccountFailure('invalid-response')
   return String(value)
+}
+function stat(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
 function parseItems(data: unknown): AccountAnnouncement[] {
   if (!Array.isArray(data)) throw new AccountFailure('invalid-response')
@@ -38,11 +50,15 @@ async function result<T>(action: () => Promise<T>): Promise<AccountResult<T>> {
 }
 
 type Fetch = (url: string, init: RequestInit) => Promise<Response>
-type Options = { vault: AccountVault; open: (url: string) => Promise<void>; fetch?: Fetch; now?: () => number; loginTimeoutMs?: number }
+type Options = { vault: AccountVault; model?: AccountModel; open: (url: string) => Promise<void>; fetch?: Fetch; now?: () => number; loginTimeoutMs?: number }
 
 type AccountHost = DesktopHost['account']
 
 export class AccountService implements AccountHost {
+  private modelGranted = false
+  private modelOwner: string | null = null
+  private configuring?: Promise<'ready' | 'failed'>
+  private cleanup?: Promise<void>
   private refresh: string | null
   private access: { token: string; expires: number } | null = null
   private pending?: AbortController
@@ -57,7 +73,7 @@ export class AccountService implements AccountHost {
   private assertCurrent(epoch: number) {
     if (epoch !== this.generation) throw new AccountFailure('cancelled')
   }
-  private async request(path: string, options: { body?: object; token?: string; probe?: boolean; signal?: AbortSignal } = {}): Promise<unknown> {
+  private async request(path: string, options: { body?: object; post?: boolean; token?: string; probe?: boolean; signal?: AbortSignal } = {}): Promise<unknown> {
     const { body, token, probe, signal } = options
     const deadline = AbortSignal.timeout(15_000)
     const combined = signal ? AbortSignal.any([signal, deadline]) : deadline
@@ -65,7 +81,7 @@ export class AccountService implements AccountHost {
     let envelope: Record<string, unknown>
     try {
       response = await (this.options.fetch ?? fetch)(`${ACCOUNT_ORIGIN}/api/v1/desktop${path}`, {
-        method: body ? 'POST' : 'GET', redirect: 'error', credentials: 'omit', cache: 'no-store', signal: combined,
+        method: body || options.post ? 'POST' : 'GET', redirect: 'error', credentials: 'omit', cache: 'no-store', signal: combined,
         headers: { Accept: 'application/json', ...(body ? { 'Content-Type': 'application/json' } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         ...(body ? { body: JSON.stringify(body) } : {}),
       })
@@ -82,12 +98,45 @@ export class AccountService implements AccountHost {
       throw new AccountFailure(response.status === 429 ? 'rate-limited' : 'unavailable')
     }
     if (!response.ok || envelope.code !== 0) {
+      if (path === '/summary' && response.status === 403 && envelope.reason === 'insufficient_scope') throw new AccountFailure('insufficient-scope')
       throw new AccountFailure(response.status === 401 ? 'unauthorized' : response.status === 404 ? 'not-found' : response.status === 429 ? 'rate-limited' : response.status >= 500 ? 'unavailable' : 'invalid-response')
     }
     return envelope.data
   }
 
+  private clearModel() {
+    this.modelOwner = null
+    this.configuring = undefined
+    // clear() invalidates the live relay synchronously, before disk/sidecar I/O.
+    this.cleanup = this.options.model?.clear()
+    void this.cleanup?.catch(() => {})
+  }
+  private async configureModel(userId: string, epoch: number): Promise<'ready' | 'failed' | undefined> {
+    const model = this.options.model
+    this.assertCurrent(epoch)
+    if (!model || !this.modelGranted) return undefined
+    if (userId === this.modelOwner) return 'ready'
+    if (!this.configuring) {
+      this.configuring = (async () => {
+        const token = await this.accessToken(epoch)
+        this.assertCurrent(epoch)
+        if (!this.modelGranted) throw new AccountFailure('insufficient-scope')
+        // A claim failure, including a 401, must not tear down an otherwise usable login.
+        const data = record(await this.request('/model-key', { token, post: true }))
+        this.assertCurrent(epoch)
+        if (!this.modelGranted || typeof data.key !== 'string' || !/^[\x21-\x7e]{16,512}$/.test(data.key)) throw new AccountFailure('invalid-response')
+        await model.install(userId, data.key)
+        this.assertCurrent(epoch)
+        if (!this.modelGranted) throw new AccountFailure('insufficient-scope')
+        this.modelOwner = userId
+        return 'ready' as const
+      })().catch(() => 'failed' as const).finally(() => { if (this.generation === epoch) this.configuring = undefined })
+    }
+    return this.configuring
+  }
   private drop() {
+    this.clearModel()
+    this.modelGranted = false
     this.generation++
     this.access = null
     this.refresh = null
@@ -99,12 +148,14 @@ export class AccountService implements AccountHost {
     // Once a grant is sent, consume the response even if cancelled so an issued
     // session can be revoked instead of becoming an orphan.
     const data = record(await this.request('/token', { body: { client_id: DESKTOP_CLIENT, ...grant } }))
-    if (data.token_type !== 'Bearer' || data.scope !== SCOPE || typeof data.access_token !== 'string' || !DESKTOP_ACCESS.test(data.access_token) ||
+    if (data.token_type !== 'Bearer' || !validScope(data.scope) || typeof data.access_token !== 'string' || !DESKTOP_ACCESS.test(data.access_token) ||
       typeof data.refresh_token !== 'string' || !DESKTOP_REFRESH.test(data.refresh_token) || typeof data.expires_in !== 'number' || !Number.isFinite(data.expires_in) || data.expires_in <= 0) throw new AccountFailure('invalid-response')
     if (epoch !== this.generation || signal?.aborted) {
       await this.revoke(data.refresh_token).catch(() => {})
       throw signal?.reason ?? new AccountFailure('cancelled')
     }
+    this.modelGranted = (data.scope as string).split(' ').includes(MODEL_SCOPE)
+    if (!this.modelGranted) this.clearModel()
     this.refresh = data.refresh_token
     this.access = { token: data.access_token, expires: this.now() + Math.min(900, data.expires_in) * 1000 }
     this.options.vault.save(this.refresh)
@@ -146,6 +197,14 @@ export class AccountService implements AccountHost {
     const email = text(user.email)
     return { id: id(user.id), displayName: text(user.username) || email, ...(email ? { email } : {}) }
   }
+  async modelServerReady() {
+    if (!this.refresh) { this.clearModel(); await this.cleanup; return }
+    // With a restored refresh session, getStatus verifies ownership and scope
+    // before enabling the relay. Keep a manually selected default intact.
+    if (this.modelOwner) {
+      try { await this.options.model?.resync?.() } catch { this.clearModel(); await this.cleanup }
+    }
+  }
   getStatus() {
     return result<AccountStatus>(async () => {
       if (this.pending) return { status: 'authorizing', authenticated: false }
@@ -153,7 +212,9 @@ export class AccountService implements AccountHost {
       const epoch = this.generation
       const profile = await this.profile(epoch)
       const unread = parseItems(await this.authorized('/announcements?unread_only=true', epoch))
-      return { status: 'signed-in', authenticated: true, profile, unreadCount: unread.length }
+      const modelSetup = await this.configureModel(profile.id, epoch)
+      this.assertCurrent(epoch)
+      return { status: 'signed-in', authenticated: true, profile, unreadCount: unread.length, ...(modelSetup && { modelSetup }) }
     })
   }
   beginLogin() {
@@ -165,9 +226,13 @@ export class AccountService implements AccountHost {
       const timer = setTimeout(() => flow.abort(new AccountFailure('timeout')), this.options.loginTimeoutMs ?? 300_000)
       try {
         await this.request('/me', { probe: true, signal: flow.signal })
-        const { code, verifier, redirectUri } = await authorizeInBrowser(this.options.open, flow.signal)
+        const { code, verifier, redirectUri } = await authorizeInBrowser(this.options.open, flow.signal, !!this.options.model)
         flow.signal.throwIfAborted()
         await this.exchange({ grant_type: 'authorization_code', code, code_verifier: verifier, redirect_uri: redirectUri }, epoch, flow.signal)
+        if (this.options.model && this.modelGranted) {
+          // Authentication completed; provisioning never rolls it back.
+          try { await this.configureModel((await this.profile(epoch)).id, epoch) } catch { /* next status can retry */ }
+        }
       } finally {
         clearTimeout(timer)
         if (this.pending === flow) this.pending = undefined
@@ -181,10 +246,20 @@ export class AccountService implements AccountHost {
     return result(async () => {
       this.pending?.abort(new AccountFailure('cancelled'))
       const token = this.refresh
-      try { this.drop() } finally { if (token) await this.revoke(token) }
+      try { this.drop() } finally { await Promise.all([this.cleanup, token ? this.revoke(token) : undefined]) }
     })
   }
   getProfile() { return result(() => this.profile(this.generation)) }
+  getSummary() {
+    return result(async () => {
+      const data = record(await this.authorized('/summary', this.generation))
+      return {
+        userId: id(data.user_id), points: stat(data.points),
+        concurrencyCurrent: stat(data.concurrency_current), concurrencyLimit: stat(data.concurrency_limit),
+        todayTokens: stat(data.today_tokens), todayRequests: stat(data.today_requests),
+      }
+    })
+  }
   listAnnouncements(input?: AccountAnnouncementListInput) {
     return result(async () => {
       const items = parseItems(await this.authorized('/announcements?unread_only=false', this.generation))

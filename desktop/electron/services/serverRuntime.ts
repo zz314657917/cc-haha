@@ -35,6 +35,7 @@ import {
 import { createPublicAccessDiagnosticWriter, type PublicAccessDiagnosticWriter } from './publicAccessDiagnostics'
 
 type ServerRuntimeOptions = {
+  modelRelayEnv?: () => Promise<Record<string,string>>
   onServerUnavailable?: () => void
   onServerReady?: () => void
   desktopRoot: string
@@ -139,6 +140,7 @@ function createServerStartState(input: ServerStartInput): ServerStartState {
 }
 
 export class ElectronServerRuntime {
+  private readonly modelRelayEnv?: ServerRuntimeOptions['modelRelayEnv']
   private readonly onServerUnavailable?: () => void
   private readonly onServerReady?: () => void
   private readonly desktopRoot: string
@@ -175,6 +177,7 @@ export class ElectronServerRuntime {
 
   constructor(options: ServerRuntimeOptions) {
     this.onServerUnavailable = options.onServerUnavailable
+    this.modelRelayEnv = options.modelRelayEnv
     this.onServerReady = options.onServerReady
     this.desktopRoot = options.desktopRoot
     this.appRoot = options.appRoot ?? options.desktopRoot
@@ -433,6 +436,10 @@ export class ElectronServerRuntime {
     const url = `http://${SERVER_CONTROL_HOST}:${port}`
     const logs: string[] = []
     const env = this.withServerAccessTokens(await this.resolveSidecarBaseEnv())
+    delete env.LUOYE_MODEL_RELAY_PORT
+    delete env.LUOYE_MODEL_RELAY_TOKEN
+    // This capability is only passed to our spawned server (never adapters).
+    if (this.modelRelayEnv) Object.assign(env, await this.modelRelayEnv().catch(() => ({})))
     this.assertCurrentGeneration(generation)
     const plan = createServerPlan({
       desktopRoot: this.desktopRoot,

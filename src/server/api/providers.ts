@@ -25,6 +25,8 @@
  */
 
 import { z } from 'zod'
+import { verifyDesktopModelSync } from '../services/desktopModelRelay.js'
+import { isLocalAccessAuthorized } from '../localAccessAuth.js'
 import { ProviderService } from '../services/providerService.js'
 import { openMagpieApp } from '../services/magpieGateway.js'
 import { PROVIDER_PRESETS } from '../config/providerPresets.js'
@@ -81,6 +83,16 @@ export async function handleProvidersApi(
   try {
     const id = segments[2]
     const action = segments[3]
+
+    if (id === 'desktop-account-sync') {
+      if (action || req.method !== 'POST' || !isLocalAccessAuthorized(req) || req.headers.has('Origin')) return new Response(null, { status: 403 })
+      const body = await req.text()
+      if (!verifyDesktopModelSync(body, req.headers.get('X-Luoye-Model-Signature'))) return new Response(null, { status: 403 })
+      const input = z.object({ userId: z.string().regex(/^[1-9]\d{0,15}$/).nullable(), revision: z.number().int().nonnegative().safe(), models: ModelMappingSchema.optional() }).strict().parse(JSON.parse(body))
+      if (input.userId && !input.models) throw ApiError.badRequest('Missing model mapping')
+      await providerService.syncDesktopAccountProvider(input.userId, input.revision, input.models)
+      return Response.json({ ok: true })
+    }
 
     // POST /api/providers/test
     if (id === 'test' && req.method === 'POST') {

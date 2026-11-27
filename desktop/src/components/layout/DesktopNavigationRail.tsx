@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react'
-import { PanelLeftOpen, X } from 'lucide-react'
+import { PanelLeftOpen, RefreshCw, X } from 'lucide-react'
 import chatIcon from '@/assets/sidebar/rail-chat.png'
 import canvasIcon from '@/assets/sidebar/rail-canvas.png'
 import noticesIcon from '@/assets/sidebar/rail-announcements.png'
@@ -13,8 +13,9 @@ import { RailAnnouncements } from '@/components/layout/RailAnnouncements'
 import { useDismissable } from '@/hooks/useDismissable'
 import { useRailAccount } from '@/hooks/useRailAccount'
 import { useTranslation } from '@/i18n'
-import { getDesktopHost } from '@/lib/desktopHost'
+import { getDesktopHost, type AccountSummary, type DesktopHost } from '@/lib/desktopHost'
 import { getTabLastViewed, SETTINGS_TAB_ID, useTabStore } from '@/stores/tabStore'
+import { useProviderStore } from '@/stores/providerStore'
 import { useSessionStore } from '@/stores/sessionStore'
 import { useUIStore } from '@/stores/uiStore'
 
@@ -40,12 +41,56 @@ function RechargeButton() {
   </>
 }
 
+function SummaryRows({ api, userId }: { api: DesktopHost['account']; userId: string }) {
+  const t = useTranslation()
+  const [value, setValue] = useState<AccountSummary | 'insufficient-scope' | null>(null)
+  const needsConsent = value === 'insufficient-scope'
+  const summary = needsConsent ? null : value
+  const [revision, setRevision] = useState(0)
+  const [loading, setLoading] = useState(true)
+  useEffect(() => {
+    let active = true
+    async function load() {
+      try {
+        const result = await api.getSummary()
+        if (!active) return
+        if (result.ok) setValue(result.data.userId === userId ? result.data : null)
+        else setValue(result.error.code === 'insufficient-scope' ? 'insufficient-scope' : null)
+      } catch {
+        if (active) setValue(null)
+      } finally {
+        if (active) setLoading(false)
+      }
+    }
+    void load()
+    return () => { active = false }
+  }, [api, userId, revision])
+  const current = summary?.concurrencyCurrent
+  const limit = summary?.concurrencyLimit
+  return <>
+    <SettingsGroup className="tabular-nums">
+      <SettingsRow layout="inline" title={t('rail.pointsBalance')}><span><span aria-hidden="true">✪ </span>{summary?.points ?? '—'}</span></SettingsRow>
+      <SettingsRow layout="inline" title={t('rail.concurrency')}><span>{current == null && limit == null ? '—' : `${current ?? '—'} / ${limit ?? '—'}`}</span></SettingsRow>
+      <SettingsRow layout="inline" title={t('rail.todayTokens')}><span>{summary?.todayTokens ?? '—'}</span></SettingsRow>
+      <SettingsRow layout="inline" title={t('rail.todayRequests')}><span>{summary?.todayRequests ?? '—'}</span></SettingsRow>
+    </SettingsGroup>
+    {needsConsent && <p role="alert" className="text-[13px] text-[var(--color-text-secondary)]">{t('rail.summarySignInAgain')}</p>}
+    <IconButton size="sm" icon={<RefreshCw />} label={t('rail.refreshSummary')} loading={loading} onClick={() => { setLoading(true); setRevision(n => n + 1) }} />
+  </>
+}
+
 export function DesktopNavigationRail() {
   const t = useTranslation()
   const host = getDesktopHost()
   const api = host.isDesktop ? host.account : undefined
   const account = useRailAccount(api)
   const profile = account.status?.authenticated ? account.status.profile : undefined
+  const configured = account.status?.modelSetup === 'ready' ? profile?.id : undefined
+  const previousConfigured = useRef<string | undefined>(undefined)
+  useEffect(() => {
+    if (previousConfigured.current !== configured) void useProviderStore.getState().fetchProviders()
+    previousConfigured.current = configured
+  }, [configured])
   const [panel, setPanel] = useState<'announcements' | 'account' | 'canvas' | null>(null)
   const sidebarOpen = useUIStore((s) => s.sidebarOpen)
   const activeSettings = useUIStore((s) => s.activeSettingsTab)
@@ -130,11 +175,8 @@ export function DesktopNavigationRail() {
             </div>
             <RechargeButton key={profile.id} />
           </div>
-          <SettingsGroup className="tabular-nums">
-            <SettingsRow layout="inline" title={t('rail.pointsBalance')}><span><span aria-hidden="true">✪ </span>—</span></SettingsRow>
-            <SettingsRow layout="inline" title={t('rail.concurrency')}><span>—</span></SettingsRow>
-            <SettingsRow layout="inline" title={t('rail.todayTokens')}><span>—</span></SettingsRow>
-          </SettingsGroup>
+          {api && account.status.status === 'signed-in' && account.busy !== 'logout' && <SummaryRows key={profile.id} api={api} userId={profile.id} />}
+          {account.status.modelSetup === 'failed' && <div className="space-y-1"><p role="status">{t('rail.modelSetupFailed')}</p><Button size="sm" variant="secondary" onClick={() => void account.refresh()}>{t('common.retry')}</Button></div>}
           <Button size="sm" variant="secondary" loading={account.busy === 'logout'} onClick={() => void account.act('signOut')}>{t('rail.signOut')}</Button>
         </div> : <div className="space-y-3">
           <p>{t(waiting ? 'rail.waiting' : 'rail.guestPrompt')}</p>

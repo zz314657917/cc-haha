@@ -1,6 +1,7 @@
 import { safeStorage } from 'electron'
 import { AccountService } from './services/accountService'
-import { createAccountVault } from './services/accountVault'
+import { DesktopModelRelay } from './services/accountModel'
+import { createAccountVault, createModelVault } from './services/accountVault'
 import type { AccountAnnouncementListInput, AccountAnnouncementReadInput } from '../src/lib/desktopHost/types'
 import { PublicAccessManager, readPublicAccessControlResponse } from './services/publicAccess'
 import { createPublicAccessDiagnosticWriter } from './services/publicAccessDiagnostics'
@@ -130,9 +131,14 @@ let serverRuntime: ElectronServerRuntime | null = null
 let dataMigration: DataMigration | null = null
 const hostOperations = new Set<Promise<unknown>>()
 let accountService: AccountService | undefined
+let modelRelay: DesktopModelRelay | undefined
+function getModelRelay() {
+  return modelRelay ??= new DesktopModelRelay(createModelVault(app.getPath('userData'), safeStorage), resolveMainRendererServerAccess)
+}
 function getAccountService() {
   return accountService ??= new AccountService({
     vault: createAccountVault(app.getPath('userData'), safeStorage), open: openExternalUrl,
+    ...(process.platform === 'win32' && { model: getModelRelay() }),
   })
 }
 let publicAccessManager: PublicAccessManager | null = null
@@ -281,8 +287,10 @@ async function loadRendererEntry(
 
 function getServerRuntime() {
   serverRuntime ??= new ElectronServerRuntime({
+    ...(process.platform === 'win32' && { modelRelayEnv: () => getModelRelay().serverEnv() }),
     onServerUnavailable: () => { void publicAccessManager?.serverUnavailable() },
     onServerReady: () => {
+      if (process.platform === 'win32') void getAccountService().modelServerReady().catch(() => {})
       void publicAccessManager?.serverChanged()
       void p2pTerminator?.refresh()
     },
@@ -687,6 +695,7 @@ function registerIpcHandlers() {
   registerHandler(ELECTRON_IPC_CHANNELS.accountCancelLogin, () => getAccountService().cancelLogin())
   registerHandler(ELECTRON_IPC_CHANNELS.accountSignOut, () => getAccountService().signOut())
   registerHandler(ELECTRON_IPC_CHANNELS.accountGetProfile, () => getAccountService().getProfile())
+  registerHandler(ELECTRON_IPC_CHANNELS.accountGetSummary, () => getAccountService().getSummary())
   registerHandler(ELECTRON_IPC_CHANNELS.accountListAnnouncements, (_event, payload) => getAccountService().listAnnouncements(payload as AccountAnnouncementListInput | undefined))
   registerHandler(ELECTRON_IPC_CHANNELS.accountMarkAnnouncementRead, (_event, payload) => getAccountService().markAnnouncementRead(payload as AccountAnnouncementReadInput))
   registerHandler(ELECTRON_IPC_CHANNELS.accountMarkAllAnnouncementsRead, () => getAccountService().markAllAnnouncementsRead())
@@ -1341,6 +1350,7 @@ app.on('before-quit', event => {
         // must never bypass the sidecar's graceful shutdown.
         console.error('[desktop] public access cleanup failed during quit')
       }
+      modelRelay?.close()
       await directConnectionsClosed
       await getServerRuntime().stopAllAndWait()
     } catch (error) {
