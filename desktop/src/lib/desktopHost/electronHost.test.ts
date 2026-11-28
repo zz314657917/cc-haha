@@ -5,6 +5,12 @@ import { createElectronHost } from './electronHost'
 import { PUBLIC_ACCESS_CONSENT_VERSION, type WorkspaceBrowserMenuOptions } from './types'
 
 describe('electron desktop host', () => {
+  it('only advertises updates when main grants the capability through preload', () => {
+    const bridge = { invoke: vi.fn(), subscribe: vi.fn() }
+    expect(createElectronHost(bridge).capabilities.updates).toBe(false)
+    expect(createElectronHost({ ...bridge, supportsManualUpdates: true }).capabilities.updates).toBe(true)
+  })
+
   it('routes account actions through fixed preload channels without exposing session credentials', async () => {
     const invoke = vi.fn().mockResolvedValue({ ok: true, data: undefined })
     const { account } = createElectronHost({ invoke, subscribe: vi.fn() })

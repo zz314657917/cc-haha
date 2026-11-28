@@ -7,9 +7,7 @@ import { browserHost } from '../../lib/desktopHost/browserHost'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { useUpdateStore } from '../../stores/updateStore'
 
-// The shipped build has updates off (APP_UPDATES_ENABLED). The prompt's own
-// behaviour is still covered with the switch on, so it keeps working if the
-// fork ever gets an update feed of its own.
+// Manual checks in About must not enable this background prompt.
 const updateFlags = vi.hoisted(() => ({ enabled: true }))
 const realUpdateActions = (() => {
   const { initialize, checkForUpdates, downloadUpdate, installUpdate, dismissPrompt } = useUpdateStore.getState()
@@ -19,7 +17,7 @@ vi.mock('../../stores/updateStore', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../stores/updateStore')>()
   return {
     ...actual,
-    get APP_UPDATES_ENABLED() {
+    get BACKGROUND_UPDATES_ENABLED() {
       return updateFlags.enabled
     },
   }
@@ -37,9 +35,9 @@ describe('UpdateChecker with updates disabled (the shipped build)', () => {
     }
   })
 
-  it('ships with app updates turned off', async () => {
+  it('ships with background updates turned off', async () => {
     const actual = await vi.importActual<typeof import('../../stores/updateStore')>('../../stores/updateStore')
-    expect(actual.APP_UPDATES_ENABLED).toBe(false)
+    expect(actual.BACKGROUND_UPDATES_ENABLED).toBe(false)
   })
 
   it('never starts an update check and renders nothing, even with a downloaded update', () => {

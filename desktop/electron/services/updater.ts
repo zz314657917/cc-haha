@@ -1,5 +1,6 @@
 import type { DesktopUpdateDownloadEvent } from '../../src/lib/desktopHost/types'
-import { existsSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
+import { parse } from 'yaml'
 import { clearAppManagedPortableEnv } from './appMode'
 
 export type ElectronUpdateInfo = {
@@ -69,24 +70,22 @@ export function normalizeUpdateInfo(info: ElectronUpdateInfo | undefined): Elect
   }
 }
 
-function isMissingUpdateMetadataError(error: unknown): boolean {
-  if (!error) return false
-  const maybeError = typeof error === 'object'
-    ? error as { code?: unknown, message?: unknown, path?: unknown }
-    : {}
-  const code = typeof maybeError.code === 'string' ? maybeError.code : ''
-  const path = typeof maybeError.path === 'string' ? maybeError.path : ''
-  const message = typeof maybeError.message === 'string' && maybeError.message
-    ? maybeError.message
-    : String(error)
-  const referencesChannelMetadata = /latest(?:-[a-z0-9]+)?(?:-[a-z0-9]+)?\.ya?ml/i.test(message)
-  if (code === 'ENOENT') {
-    return path.endsWith('app-update.yml') || message.includes('app-update.yml')
+export const LUOYE_UPDATE_FEED = {
+  provider: 'github', owner: 'zz314657917', repo: 'cc-haha', channel: 'latest', releaseType: 'release',
+} as const
+
+const stableVersion = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/
+
+export function supportsWindowsStableUpdates(packaged: boolean, platform: string, version: string): boolean {
+  return packaged && platform === 'win32' && stableVersion.test(version)
+}
+
+function validateUpdateConfig(file: string) {
+  const config = parse(readFileSync(file, 'utf8'))
+  if (!config || Object.entries(LUOYE_UPDATE_FEED).some(([key, value]) => config[key] !== value)
+      || config.host || config.protocol || config.url || config.private || config.token) {
+    throw new Error('Invalid LuoyeAI stable update configuration')
   }
-  if (code === 'ERR_UPDATER_CHANNEL_FILE_NOT_FOUND') {
-    return referencesChannelMetadata
-  }
-  return referencesChannelMetadata && /cannot find|not found|404/i.test(message)
 }
 
 export class ElectronUpdaterService {
@@ -130,20 +129,14 @@ export class ElectronUpdaterService {
 
   async checkForUpdates(options?: ElectronUpdateCheckOptions): Promise<ElectronUpdateMetadata | null> {
     this.installRequested = false
-    let result: ElectronUpdateCheckResult
-    try {
-      await this.applyProxy(options)
-      if (this.updateConfigPath && !existsSync(this.updateConfigPath)) {
-        result = null
-      } else {
-        result = await this.updater.checkForUpdates()
-      }
-    } catch (error) {
-      if (!isMissingUpdateMetadataError(error)) throw error
-      result = null
-    }
-    this.pendingUpdate = result?.isUpdateAvailable === false ? null : normalizeUpdateInfo(result?.updateInfo)
+    this.pendingUpdate = null
     this.downloaded = false
+    if (this.updateConfigPath) validateUpdateConfig(this.updateConfigPath)
+    await this.applyProxy(options)
+    const result = await this.updater.checkForUpdates()
+    const metadata = normalizeUpdateInfo(result?.updateInfo)
+    if (!metadata || (this.updateConfigPath && !stableVersion.test(metadata.version))) throw new Error('No valid stable update manifest was returned')
+    this.pendingUpdate = result?.isUpdateAvailable === false ? null : metadata
     return this.pendingUpdate
   }
 

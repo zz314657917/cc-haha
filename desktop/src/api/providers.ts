@@ -38,7 +38,18 @@ type AuthStatusResponse = {
   activeProvider?: string
 }
 
+export type NodeHealthResult = {
+  region: 'hk' | 'us'
+  status: 'responded' | 'denied' | 'authRequired' | 'timeout' | 'dns' | 'tls' | 'limited' | 'redirect' | 'httpError' | 'network'
+  latencyMs: number
+  httpStatus?: number
+}
+
 export const providersApi = {
+  checkLuoyeNode(region: NodeHealthResult['region'], apiKey?: string) {
+    return api.post<NodeHealthResult>('/api/providers/luoye-node-health', { region, apiKey })
+  },
+
   list() {
     return api.get<ProvidersListResponse>('/api/providers')
   },

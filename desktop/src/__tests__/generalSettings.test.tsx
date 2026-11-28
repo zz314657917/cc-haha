@@ -3931,9 +3931,7 @@ describe('Settings > About tab', () => {
     })
   })
 
-  // This build hides the update controls (APP_UPDATES_ENABLED is off): the
-  // only feed is upstream cc-haha's, and installing it would replace 落叶AI.
-  it('keeps the update controls off the About page', async () => {
+  it('keeps the update controls off the About page on a host without updates', async () => {
     render(<Settings />)
 
     expect(await screen.findByText('Source and license')).toBeInTheDocument()
@@ -3942,8 +3940,6 @@ describe('Settings > About tab', () => {
     expect(useUpdateStore.getState().initialize).not.toHaveBeenCalled()
   })
 
-  // The tests below render the hidden section on its own so it keeps working
-  // for a future 落叶AI update feed.
   it('renders release notes with markdown formatting', async () => {
     render(<AboutUpdatesSection version="0.1.0" />)
 

@@ -86,6 +86,7 @@ import { compatibilityForm, invalidCompatibilityNumber, parseCompatibilityForm, 
 import { ProviderImageGenerationFields, type ImageGenerationFormValue } from '../../components/settings/ProviderImageGenerationFields'
 import { ProviderBalanceBadge } from '../../components/settings/ProviderBalanceBadge'
 import { isLuoyeAiProvider, luoyeAiFamily, LUOYEAI_ENDPOINTS, type LuoyeAiScope } from '../../lib/luoyeAiSetup'
+import { LuoyeNodeHealth } from './LuoyeNodeHealth'
 import { LuoyeAiKeyDialog } from '@/components/layout/LuoyeAiSetupDialog'
 import { Card } from '@/components/ui/Card'
 import { BUILT_IN_PROVIDER_IDS, CLAUDE_OFFICIAL_PROVIDER_ID, OPENAI_OFFICIAL_PROVIDER_ID } from '../../constants/openaiOfficialProvider'
@@ -616,6 +617,7 @@ export function ProviderSettings({ browserMode = false }: { browserMode?: boolea
         )}
       />
 
+      {!browserMode && <LuoyeNodeHealth />}
       {(actionFailed || (browserMode && providerLoadError)) && <p role="alert" className="mt-4 text-[13px] text-[var(--color-error)]">{t('publicAccess.genericError')}</p>}
       <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
         <SegmentedControl

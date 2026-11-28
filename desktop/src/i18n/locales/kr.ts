@@ -1,6 +1,20 @@
 import type { TranslationKey } from './en'
 
 export const kr: Record<TranslationKey, string> = {
+  'nodeHealth.title': '홍콩 및 미국 노드 확인',
+  'nodeHealth.hint': '두 노드의 모델 목록 응답 헤더를 확인합니다. 키를 입력하면 이번 확인에만 두 노드로 전송합니다. 모델을 호출하거나 현재 노드를 변경하지 않습니다.',
+  'nodeHealth.responded': '노드가 응답함',
+  'nodeHealth.denied': '접근 거부',
+  'nodeHealth.authRequired': '연결 가능, 인증 필요',
+  'nodeHealth.timeout': '시간 초과',
+  'nodeHealth.dns': '도메인 이름 확인 실패',
+  'nodeHealth.tls': 'TLS 연결 실패',
+  'nodeHealth.limited': '요청 빈도 제한',
+  'nodeHealth.redirect': '리디렉션을 따르지 않음',
+  'nodeHealth.httpError': 'HTTP 오류',
+  'nodeHealth.network': '네트워크 오류',
+  'nodeHealth.unavailable': '로컬 확인을 실행할 수 없음',
+  'nodeHealth.latency': '{ms} 밀리초',
   "agentTeams.runtime.title": "팀 실행 제어",
   "agentTeams.runtime.loading": "팀 상태를 불러오는 중…",
   "agentTeams.runtime.refresh": "팀 상태 새로 고침",
@@ -4239,6 +4253,7 @@ export const kr: Record<TranslationKey, string> = {
   'update.readyTitle': '업데이트 준비 완료',
   'update.restarting': '업데이트를 완료하기 위해 다시 시작 중...',
   'update.upToDate': 'v{version}은(는) 최신입니다.',
+  'update.checkUnavailable': 'LuoyeAI Windows 업데이트 목록을 읽을 수 없습니다. 네트워크 연결을 확인하거나 새 버전이 출시된 후 다시 시도하세요.',
   'update.failed': '업데이트에 실패했습니다: {error}',
 
   // ─── Active Session ──────────────────────────────────────

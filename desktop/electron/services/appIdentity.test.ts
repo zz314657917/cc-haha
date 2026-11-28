@@ -133,6 +133,7 @@ describe('Windows window and pinned taskbar identity', () => {
         windowChromeOptionsForPlatform: () => ({}),
         resolveStartupWindowBackground: () => '#ffffff',
         preloadPath: () => 'preload.cjs',
+        supportsManualUpdates: () => true,
         MIN_WINDOW_WIDTH: 400,
         MIN_WINDOW_HEIGHT: 300,
         BrowserWindow,

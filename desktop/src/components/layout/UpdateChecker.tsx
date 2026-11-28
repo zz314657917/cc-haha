@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/Button'
 import { useTranslation } from '../../i18n'
 import { MarkdownRenderer } from '../markdown/MarkdownRenderer'
 import { isDesktopRuntime } from '../../lib/desktopRuntime'
-import { APP_UPDATES_ENABLED, useUpdateStore } from '../../stores/updateStore'
+import { BACKGROUND_UPDATES_ENABLED, useUpdateStore } from '../../stores/updateStore'
 import { useSettingsStore } from '../../stores/settingsStore'
 
 export function UpdateChecker() {
@@ -19,10 +19,10 @@ export function UpdateChecker() {
   const dismissPrompt = useUpdateStore((s) => s.dismissPrompt)
 
   useEffect(() => {
-    if (APP_UPDATES_ENABLED && autoUpdateEnabled) void initialize()
+    if (BACKGROUND_UPDATES_ENABLED && autoUpdateEnabled) void initialize()
   }, [autoUpdateEnabled, initialize])
 
-  if (!APP_UPDATES_ENABLED || !isDesktopRuntime() || !autoUpdateEnabled) return null
+  if (!BACKGROUND_UPDATES_ENABLED || !isDesktopRuntime() || !autoUpdateEnabled) return null
 
   const showPopup = shouldPrompt && !!availableVersion && status === 'downloaded'
 

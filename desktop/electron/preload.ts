@@ -4,6 +4,7 @@ import type { DesktopHostUnlisten } from '../src/lib/desktopHost/types'
 import type { ElectronEventChannel, ElectronIpcChannel } from './ipc/channels'
 
 const electronHost = createElectronHost({
+  supportsManualUpdates: process.argv.includes('--luoye-manual-updates'),
   getPathForFile(file) {
     return webUtils.getPathForFile(file)
   },

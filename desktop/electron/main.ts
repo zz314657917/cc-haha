@@ -36,7 +36,7 @@ import { workspaceBrowserMenuPosition } from './services/workspaceBrowserMenu'
 import type { WorkspaceBrowserMenuOptions } from '../src/lib/desktopHost/types'
 import { acquireSingleInstanceLock } from './services/singleInstance'
 import { installTray, shouldInstallTray, type TrayController } from './services/tray'
-import { ElectronUpdaterService, updaterSessionProxyConfig, type ElectronUpdaterLike } from './services/updater'
+import { ElectronUpdaterService, supportsWindowsStableUpdates, updaterSessionProxyConfig, LUOYE_UPDATE_FEED } from './services/updater'
 import { createUpdateSmokeUpdaterFromEnv } from './services/updateSmoke'
 import { ElectronTerminalService, type TerminalSpawnInput } from './services/terminal'
 import { ElectronPreviewService, type PreviewBounds } from './services/preview'
@@ -410,46 +410,23 @@ function resolveMainRendererServerAccess(): PreviewLocalAccess | null {
     : null
 }
 
-// 落叶AI is a fork, and the only feed electron-updater could reach is upstream
-// NanmiCoder/cc-haha's GitHub Releases: installing one would replace this client
-// with upstream cc-haha. With updates off, every check answers "no update" and
-// electron-updater's `autoUpdater` is never touched, so it never loads a feed.
-// The renderer mirrors this with APP_UPDATES_ENABLED in src/stores/updateStore.ts.
-const UPDATES_ENABLED = false
-
-const disabledUpdater: ElectronUpdaterLike = {
-  autoDownload: false,
-  autoInstallOnAppQuit: false,
-  async checkForUpdates() {
-    return null
-  },
-  async downloadUpdate() {
-    throw new Error('App updates are disabled in this build')
-  },
-  quitAndInstall() {},
-  on() {
-    return disabledUpdater
-  },
-  off() {
-    return disabledUpdater
-  },
+function supportsManualUpdates() {
+  return supportsWindowsStableUpdates(app.isPackaged, process.platform, app.getVersion())
 }
 
 function getUpdaterService() {
+  if (updaterService) return updaterService
   const smokeUpdater = createUpdateSmokeUpdaterFromEnv(process.env)
-  if (!UPDATES_ENABLED && !smokeUpdater) {
-    updaterService ??= new ElectronUpdaterService(disabledUpdater)
-    return updaterService
-  }
-  updaterService ??= new ElectronUpdaterService(smokeUpdater ?? autoUpdater, {
+  if (smokeUpdater) return updaterService = new ElectronUpdaterService(smokeUpdater)
+  if (!supportsManualUpdates()) throw new Error('This build does not support manual updates')
+  autoUpdater.setFeedURL(LUOYE_UPDATE_FEED)
+  autoUpdater.allowPrerelease = false
+  autoUpdater.allowDowngrade = false
+  updaterService = new ElectronUpdaterService(autoUpdater, {
     async apply(proxy) {
-      // Update traffic runs on electron-updater's own session partition;
-      // configuring app/defaultSession proxies never reaches it.
       await autoUpdater.netSession.setProxy(updaterSessionProxyConfig(proxy))
     },
-  }, {
-    updateConfigPath: !smokeUpdater && app.isPackaged ? path.join(process.resourcesPath, 'app-update.yml') : undefined,
-  })
+  }, { updateConfigPath: path.join(process.resourcesPath, 'app-update.yml') })
   return updaterService
 }
 
@@ -901,6 +878,7 @@ function registerIpcHandlers() {
   }))
   registerHandler(ELECTRON_IPC_CHANNELS.updateInstall, () => getUpdaterService().stageDownloadedUpdate())
   registerHandler(ELECTRON_IPC_CHANNELS.updatePrepareInstall, async () => {
+    if (!getUpdaterService().hasDownloadedUpdate()) throw new Error('No downloaded update is ready to install')
     await publicAccessManager?.stop()
     // stopAll() hands the runtime's children off without tracking them, so the
     // before-quit stopAllAndWait() finds nothing left to wait for and the app
@@ -919,13 +897,10 @@ function registerIpcHandlers() {
   })
   registerHandler(ELECTRON_IPC_CHANNELS.updateCancelInstall, () => getUpdaterService().cancelInstall())
   registerHandler(ELECTRON_IPC_CHANNELS.updateRelaunch, () => {
-    if (getUpdaterService().hasStagedUpdate()) {
-      isQuitting = true
-      getUpdaterService().quitAndInstallDownloadedUpdate()
-      return
-    }
-    app.relaunch()
-    app.quit()
+    const service = getUpdaterService()
+    if (!service.hasStagedUpdate()) throw new Error('No update installation was requested')
+    isQuitting = true
+    service.quitAndInstallDownloadedUpdate()
   })
   registerHandler(ELECTRON_IPC_CHANNELS.notificationPermissionState, () => notificationPermissionState(Notification))
   registerHandler(ELECTRON_IPC_CHANNELS.notificationRequestPermission, () => requestNotificationPermission(Notification))
@@ -1088,6 +1063,7 @@ async function createMainWindow() {
     ...windowChromeOptionsForPlatform(process.platform),
     webPreferences: {
       preload: preloadPath(),
+      additionalArguments: supportsManualUpdates() ? ['--luoye-manual-updates'] : [],
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,

@@ -32,7 +32,7 @@ describe('app mode restart lifecycle', () => {
 
 // Runs the production updatePrepareInstall handler from main.ts against
 // fixtures, without booting Electron or a sidecar.
-function prepareInstallFixture() {
+function prepareInstallFixture(downloaded = true) {
   const desktopDir = path.basename(process.cwd()) === 'desktop'
     ? process.cwd()
     : path.join(process.cwd(), 'desktop')
@@ -51,6 +51,7 @@ function prepareInstallFixture() {
   runInNewContext(source.slice(start, end), {
     ELECTRON_IPC_CHANNELS: { updatePrepareInstall: 'update-prepare-install' },
     registerHandler: (_channel: string, fn: () => Promise<void>) => { handler = fn },
+    getUpdaterService: () => ({ hasDownloadedUpdate: () => downloaded }),
     publicAccessManager: { stop: async () => { calls.push('publicAccess') } },
     getServerRuntime: () => ({
       stopAllAndWait: () => {
@@ -69,6 +70,12 @@ function prepareInstallFixture() {
 const settle = () => new Promise<void>(resolve => setImmediate(resolve))
 
 describe('update install preparation', () => {
+  it('does not stop the runtime unless an update has finished downloading', async () => {
+    const fixture = prepareInstallFixture(false)
+    await expect(fixture.run()).rejects.toThrow('No downloaded update')
+    expect(fixture.calls).toEqual([])
+  })
+
   it('resolves only after the runtime and its children have exited', async () => {
     const fixture = prepareInstallFixture()
     let resolved = false

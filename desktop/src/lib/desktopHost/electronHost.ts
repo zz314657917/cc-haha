@@ -13,6 +13,7 @@ import {
 import { validateElectronIpcPayload } from '../../../electron/ipc/capabilities'
 
 export type ElectronHostBridge = {
+  supportsManualUpdates?: boolean
   invoke<T>(channel: ElectronIpcChannel, payload?: unknown): Promise<T>
   getPathForFile?(file: File): string
   subscribe<T>(
@@ -91,7 +92,7 @@ export function createElectronHost(bridge: ElectronHostBridge): DesktopHost {
       workspaceBrowser: true,
       shell: true,
       terminal: true,
-      updates: true,
+      updates: bridge.supportsManualUpdates === true,
       windowControls: true,
       zoom: true,
     },

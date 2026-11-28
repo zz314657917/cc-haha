@@ -78,6 +78,21 @@ describe('updateStore', () => {
     expect(useUpdateStore.getState().shouldPrompt).toBe(true)
   })
 
+  it('invalidates the previous candidate after a failed manual recheck', async () => {
+    const candidate = { version: '0.2.0', body: 'Withdrawn', download: vi.fn(), install: vi.fn(), close: vi.fn() }
+    check.mockResolvedValueOnce(candidate).mockRejectedValue(new Error('manifest unavailable'))
+    vi.resetModules()
+    const { useUpdateStore } = await import('./updateStore')
+    const actions = useUpdateStore.getState()
+    await actions.checkForUpdates({ autoDownload: false })
+    await actions.checkForUpdates({ autoDownload: false })
+    expect(useUpdateStore.getState()).toMatchObject({ status: 'error', availableVersion: null, releaseNotes: null })
+    expect(candidate.close).toHaveBeenCalledOnce()
+    await actions.installUpdate()
+    expect(candidate.download).not.toHaveBeenCalled()
+    expect(candidate.install).not.toHaveBeenCalled()
+  })
+
   it('treats same-version update metadata as already up to date', async () => {
     const download = vi.fn().mockResolvedValue(undefined)
     const close = vi.fn().mockResolvedValue(undefined)
@@ -491,6 +506,7 @@ describe('updateStore', () => {
       let downloadHandler: ((event: DesktopUpdateDownloadEvent) => void) | null = null
       let firstRelaunch = true
       window.desktopHost = createElectronHost({
+        supportsManualUpdates: true,
         async invoke<T>(channel: ElectronIpcChannel) {
           let result: unknown
           switch (channel) {

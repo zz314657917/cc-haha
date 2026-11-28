@@ -1,6 +1,20 @@
 import type { TranslationKey } from './en'
 
 export const zh: Record<TranslationKey, string> = {
+  'nodeHealth.title': '检查香港和美国节点',
+  'nodeHealth.hint': '检查两个节点的模型目录响应头。可选填密钥，仅用于本次检查，并会发给这两个节点。不会调用模型或切换当前节点。',
+  'nodeHealth.responded': '节点已响应',
+  'nodeHealth.denied': '访问被拒绝',
+  'nodeHealth.authRequired': '节点可达，需要认证',
+  'nodeHealth.timeout': '请求超时',
+  'nodeHealth.dns': '域名解析失败',
+  'nodeHealth.tls': 'TLS 连接失败',
+  'nodeHealth.limited': '请求受到限流',
+  'nodeHealth.redirect': '未跟随重定向',
+  'nodeHealth.httpError': 'HTTP 错误',
+  'nodeHealth.network': '网络错误',
+  'nodeHealth.unavailable': '本地检查不可用',
+  'nodeHealth.latency': '{ms} 毫秒',
   "agentTeams.runtime.title": "团队运行控制",
   "agentTeams.runtime.loading": "正在读取团队状态…",
   "agentTeams.runtime.refresh": "刷新团队状态",
@@ -4234,6 +4248,7 @@ export const zh: Record<TranslationKey, string> = {
   'update.readyTitle': '更新已准备好',
   'update.restarting': '正在重启以完成更新...',
   'update.upToDate': '当前已是最新版本 v{version}。',
+  'update.checkUnavailable': '无法读取落叶AI 的 Windows 更新清单。请确认网络连接，或等新版发布后再检查。请稍后重试。',
   'update.failed': '更新失败: {error}',
 
   // ─── 活跃会话 ──────────────────────────────────────

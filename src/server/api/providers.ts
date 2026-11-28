@@ -49,6 +49,8 @@ import {
 } from '../services/ccSwitchImport.js'
 import { fetchProviderModels } from '../services/providerModelCatalog.js'
 import { fetchProviderBalance } from '../services/providerBalance.js'
+import { checkLuoyeNode } from '../services/luoyeNodeHealth.js'
+import { loadNetworkSettings } from '../services/networkSettings.js'
 
 const providerService = new ProviderService()
 
@@ -97,6 +99,13 @@ export async function handleProvidersApi(
     // POST /api/providers/test
     if (id === 'test' && req.method === 'POST') {
       return await handleTestUnsaved(req)
+    }
+
+    if (id === 'luoye-node-health' && !action) {
+      if (req.method !== 'POST') throw methodNotAllowed(req.method)
+      const input = z.object({ region: z.enum(['hk', 'us']), apiKey: z.string().trim().max(4096).optional() }).strict().safeParse(await parseJsonBody(req))
+      if (!input.success) throw ApiError.badRequest('Invalid node check request')
+      return Response.json(await checkLuoyeNode(input.data.region, input.data.apiKey ?? '', await loadNetworkSettings()), { headers: { 'Cache-Control': 'no-store' } })
     }
 
     // POST /api/providers/models

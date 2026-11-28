@@ -1,4 +1,18 @@
 export const en = {
+  'nodeHealth.title': 'Check Hong Kong and US nodes',
+  'nodeHealth.hint': 'Checks response headers from both model catalogs. An optional key is sent to both nodes for this check only. No model is called and your selected node stays unchanged.',
+  'nodeHealth.responded': 'Endpoint responded',
+  'nodeHealth.denied': 'Access denied',
+  'nodeHealth.authRequired': 'Reachable; authentication required',
+  'nodeHealth.timeout': 'Timed out',
+  'nodeHealth.dns': 'DNS lookup failed',
+  'nodeHealth.tls': 'TLS connection failed',
+  'nodeHealth.limited': 'Rate limited',
+  'nodeHealth.redirect': 'Redirect not followed',
+  'nodeHealth.httpError': 'HTTP error',
+  'nodeHealth.network': 'Network error',
+  'nodeHealth.unavailable': 'Local check unavailable',
+  'nodeHealth.latency': '{ms} ms',
   "agentTeams.runtime.title": "Team controls",
   "agentTeams.runtime.loading": "Loading team controls…",
   "agentTeams.runtime.refresh": "Refresh team controls",
@@ -4236,6 +4250,7 @@ Row 9, all 8 cells: continuing from straight down, turning left through lower-le
   'update.readyTitle': 'Update ready',
   'update.restarting': 'Restarting to finish update...',
   'update.upToDate': 'You are up to date on v{version}.',
+  'update.checkUnavailable': 'Could not read the LuoyeAI Windows update list. Check your connection or try again after a release is published.',
   'update.failed': 'Update failed: {error}',
 
   // ─── Active Session ──────────────────────────────────────

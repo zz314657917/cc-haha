@@ -12,11 +12,10 @@ import {
   SettingsPageHeader,
   SettingsRow,
   SettingsSection,
-  SettingsSwitchRow,
 } from '@/components/settings/SettingsSection'
 import type { UpdateProxyMode } from '../../types/settings'
 import { MarkdownRenderer } from '../../components/markdown/MarkdownRenderer'
-import { APP_UPDATES_ENABLED, useUpdateStore } from '../../stores/updateStore'
+import { useUpdateStore } from '../../stores/updateStore'
 import { formatBytes } from '../../lib/formatBytes'
 import { getDesktopHost } from '../../lib/desktopHost'
 import { BrandSeal } from '../../components/composite/BrandSeal'
@@ -81,7 +80,7 @@ export function AboutSettings() {
         />
       </SettingsGroup>
 
-      {APP_UPDATES_ENABLED && <AboutUpdatesSection version={version} />}
+      {getDesktopHost().capabilities.updates && <AboutUpdatesSection version={version} />}
 
       {/* Required by the cc-haha license, section 4(b) and 4(c). */}
       <SettingsSection title={t('settings.about.attribution')}>
@@ -107,17 +106,10 @@ function openUrl(url: string) {
   void getDesktopHost().shell.open(url).catch(() => window.open(url, '_blank'))
 }
 
-/**
- * Version, auto-update switch, install button and update proxy. Rendered only
- * when APP_UPDATES_ENABLED: this fork has no update feed of its own, and the
- * upstream one would replace 落叶AI with cc-haha.
- */
 export function AboutUpdatesSection({ version }: { version: string }) {
   const t = useTranslation()
   const updateProxy = useSettingsStore((s) => s.updateProxy)
   const setUpdateProxy = useSettingsStore((s) => s.setUpdateProxy)
-  const autoUpdateEnabled = useSettingsStore((s) => s.autoUpdateEnabled)
-  const setAutoUpdateEnabled = useSettingsStore((s) => s.setAutoUpdateEnabled)
   const updateStatus = useUpdateStore((s) => s.status)
   const availableVersion = useUpdateStore((s) => s.availableVersion)
   const releaseNotes = useUpdateStore((s) => s.releaseNotes)
@@ -128,17 +120,10 @@ export function AboutUpdatesSection({ version }: { version: string }) {
   const checkedAt = useUpdateStore((s) => s.checkedAt)
   const checkForUpdates = useUpdateStore((s) => s.checkForUpdates)
   const installUpdate = useUpdateStore((s) => s.installUpdate)
-  const initialize = useUpdateStore((s) => s.initialize)
   const [showUpdateProxyAdvanced, setShowUpdateProxyAdvanced] = useState(false)
   const [updateProxyDraft, setUpdateProxyDraft] = useState(updateProxy)
   const [updateProxySaveError, setUpdateProxySaveError] = useState<string | null>(null)
   const [isSavingUpdateProxy, setIsSavingUpdateProxy] = useState(false)
-  const [isSavingAutoUpdate, setIsSavingAutoUpdate] = useState(false)
-  const [autoUpdateSaveError, setAutoUpdateSaveError] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (autoUpdateEnabled) void initialize()
-  }, [autoUpdateEnabled, initialize])
 
   useEffect(() => {
     setUpdateProxyDraft(updateProxy)
@@ -197,22 +182,11 @@ export function AboutUpdatesSection({ version }: { version: string }) {
     }
   }
 
-  const saveAutoUpdateEnabled = async (enabled: boolean) => {
-    setIsSavingAutoUpdate(true)
-    setAutoUpdateSaveError(null)
-    try {
-      await setAutoUpdateEnabled(enabled)
-    } catch (error) {
-      setAutoUpdateSaveError(error instanceof Error ? error.message : String(error))
-    } finally {
-      setIsSavingAutoUpdate(false)
-    }
-  }
-
   const hasKnownProgress = typeof totalBytes === 'number' && totalBytes > 0
   const downloadedText = formatBytes(downloadedBytes)
   const updateDescription = (() => {
     if (updateStatus === 'checking') return t('update.checking')
+    if (updateStatus === 'error') return t('update.checkUnavailable')
     if (error) return t('update.failed', { error })
     if (updateStatus === 'downloading') {
       return hasKnownProgress
@@ -237,7 +211,8 @@ export function AboutUpdatesSection({ version }: { version: string }) {
         <Button
           size="sm"
           variant="secondary"
-          onClick={() => void checkForUpdates()}
+          onClick={() => void checkForUpdates({ autoDownload: false })}
+          disabled={updateStatus === 'downloading' || updateStatus === 'installing' || updateStatus === 'restarting'}
           loading={updateStatus === 'checking'}
         >
           {t('update.checkNow')}
@@ -245,18 +220,6 @@ export function AboutUpdatesSection({ version }: { version: string }) {
       )}
     >
       <SettingsGroup>
-        <SettingsSwitchRow
-          title={t('update.autoUpdate')}
-          description={t('update.autoUpdateDescription')}
-          checked={autoUpdateEnabled}
-          disabled={isSavingAutoUpdate}
-          onChange={(enabled) => void saveAutoUpdateEnabled(enabled)}
-          footer={autoUpdateSaveError ? (
-            <p role="alert" className="text-xs leading-[1.5] text-[var(--color-error)]">
-              {t('update.autoUpdateSaveFailed', { error: autoUpdateSaveError })}
-            </p>
-          ) : undefined}
-        />
         <SettingsRow
           title={(
             <span className="inline-flex flex-wrap items-center gap-2">
@@ -273,7 +236,7 @@ export function AboutUpdatesSection({ version }: { version: string }) {
           )}
           description={(
             <>
-              <span className={`block ${error ? 'text-[var(--color-error)]' : ''}`}>{updateDescription}</span>
+              <span role={error ? 'alert' : 'status'} className={`block ${error ? 'text-[var(--color-error)]' : ''}`}>{updateDescription}</span>
               {checkedAtText && (
                 <span className="mt-0.5 block">{t('update.checkedAt', { time: checkedAtText })}</span>
               )}

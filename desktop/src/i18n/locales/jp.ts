@@ -1,6 +1,20 @@
 import type { TranslationKey } from './en'
 
 export const jp: Record<TranslationKey, string> = {
+  'nodeHealth.title': '香港・米国ノードをチェック',
+  'nodeHealth.hint': '両ノードのモデル一覧の応答ヘッダーを確認します。任意で入力したキーは今回のみ両ノードに送信します。モデルの呼び出しやノードの切り替えは行いません。',
+  'nodeHealth.responded': 'ノードから応答あり',
+  'nodeHealth.denied': 'アクセスが拒否されました',
+  'nodeHealth.authRequired': '接続可能・認証が必要',
+  'nodeHealth.timeout': 'タイムアウト',
+  'nodeHealth.dns': '名前解決に失敗',
+  'nodeHealth.tls': 'TLS 接続に失敗',
+  'nodeHealth.limited': 'レート制限',
+  'nodeHealth.redirect': 'リダイレクトを停止',
+  'nodeHealth.httpError': 'HTTP エラー',
+  'nodeHealth.network': 'ネットワークエラー',
+  'nodeHealth.unavailable': 'ローカルチェックを実行できません',
+  'nodeHealth.latency': '{ms} ミリ秒',
   "agentTeams.runtime.title": "チーム実行の操作",
   "agentTeams.runtime.loading": "チームの状態を取得中…",
   "agentTeams.runtime.refresh": "チームの状態を更新",
@@ -4237,6 +4251,7 @@ export const jp: Record<TranslationKey, string> = {
   'update.readyTitle': '更新の準備完了',
   'update.restarting': '更新を完了するために再起動中...',
   'update.upToDate': 'v{version} は最新です。',
+  'update.checkUnavailable': '落叶AI の Windows 更新情報を取得できません。ネットワーク接続を確認するか、新しいバージョンの公開後にもう一度お試しください。',
   'update.failed': '更新に失敗しました: {error}',
 
   // ─── Active Session ──────────────────────────────────────

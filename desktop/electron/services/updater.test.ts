@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { EventEmitter } from 'node:events'
-import { ElectronUpdaterService, normalizeUpdateInfo, updaterSessionProxyConfig, type ElectronUpdaterLike } from './updater'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { ElectronUpdaterService, LUOYE_UPDATE_FEED, normalizeUpdateInfo, updaterSessionProxyConfig, type ElectronUpdaterLike } from './updater'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -75,17 +75,17 @@ describe('Electron updater service', () => {
     ])
   })
 
-  it('treats missing unpacked app update metadata as no update', async () => {
+  it('propagates missing local update metadata as a check failure', async () => {
     const service = new ElectronUpdaterService(updater)
     updater.checkForUpdates.mockRejectedValueOnce(Object.assign(new Error("ENOENT: no such file or directory, open '/App/Contents/Resources/app-update.yml'"), {
       code: 'ENOENT',
       path: '/App/Contents/Resources/app-update.yml',
     }))
 
-    await expect(service.checkForUpdates()).resolves.toBeNull()
+    await expect(service.checkForUpdates()).rejects.toThrow('ENOENT')
   })
 
-  it('skips electron-updater when packaged update config is absent', async () => {
+  it('rejects missing or untrusted config without any network call; only accepts stable fork metadata', async () => {
     const localUpdater = fakeUpdater()
     const tempDir = mkdtempSync(join(tmpdir(), 'cc-haha-updater-'))
     try {
@@ -93,40 +93,34 @@ describe('Electron updater service', () => {
         updateConfigPath: join(tempDir, 'app-update.yml'),
       })
 
-      await expect(service.checkForUpdates()).resolves.toBeNull()
-
+      await expect(service.checkForUpdates()).rejects.toThrow('ENOENT')
+      const config = join(tempDir, 'app-update.yml')
+      for (const override of [{ owner: 'NanmiCoder' }, { channel: 'beta' }, { host: 'other.invalid' }]) {
+        writeFileSync(config, JSON.stringify({ ...LUOYE_UPDATE_FEED, ...override }))
+        await expect(service.checkForUpdates()).rejects.toThrow('Invalid LuoyeAI')
+      }
       expect(localUpdater.checkForUpdates).not.toHaveBeenCalled()
+      writeFileSync(config, JSON.stringify(LUOYE_UPDATE_FEED))
+      localUpdater.checkForUpdates.mockResolvedValueOnce(null).mockResolvedValueOnce({ updateInfo: { version: '1.0.0-beta.1' } }).mockResolvedValueOnce({ isUpdateAvailable: false, updateInfo: { version: '1.0.0' } })
+      await expect(service.checkForUpdates()).rejects.toThrow('stable update manifest')
+      await expect(service.checkForUpdates()).rejects.toThrow('stable update manifest')
+      await expect(service.checkForUpdates()).resolves.toBeNull()
     } finally {
       rmSync(tempDir, { recursive: true, force: true })
     }
   })
 
-  it('treats missing GitHub channel metadata as no update', async () => {
-    const service = new ElectronUpdaterService(updater)
-    updater.checkForUpdates.mockRejectedValueOnce(Object.assign(
-      new Error('Cannot find latest-mac.yml in the latest release artifacts (https://github.com/NanmiCoder/cc-haha/releases/download/v0.3.2/latest-mac.yml): HttpError: 404'),
-      { code: 'ERR_UPDATER_CHANNEL_FILE_NOT_FOUND' },
-    ))
-
-    await expect(service.checkForUpdates()).resolves.toBeNull()
-  })
-
-  it('treats missing GitHub channel metadata as no update even without an error code', async () => {
-    const service = new ElectronUpdaterService(updater)
-    updater.checkForUpdates.mockRejectedValueOnce(
-      new Error('Cannot find latest-mac.yml in the latest release artifacts (https://github.com/NanmiCoder/cc-haha/releases/download/v0.3.2/latest-mac.yml): HttpError: 404'),
-    )
-
-    await expect(service.checkForUpdates()).resolves.toBeNull()
-  })
-
-  it('treats stringified missing GitHub channel metadata as no update', async () => {
-    const service = new ElectronUpdaterService(updater)
-    updater.checkForUpdates.mockRejectedValueOnce(
-      'Error: Cannot find latest-mac.yml in the latest release artifacts (https://github.com/NanmiCoder/cc-haha/releases/download/v0.3.2/latest-mac.yml): HttpError: 404',
-    )
-
-    await expect(service.checkForUpdates()).resolves.toBeNull()
+  it.each([
+    Object.assign(new Error('Missing latest.yml'), { code: 'ERR_UPDATER_CHANNEL_FILE_NOT_FOUND' }),
+    new Error('No releases published'),
+    'Cannot find latest.yml: 404',
+  ])('does not report the installed version as current when the release feed fails', async error => {
+    const local = fakeUpdater()
+    const service = new ElectronUpdaterService(local)
+    local.checkForUpdates.mockResolvedValueOnce({ updateInfo: { version: '1.2.3' } }).mockRejectedValueOnce(error)
+    await service.checkForUpdates()
+    await expect(service.checkForUpdates()).rejects.toBe(error)
+    await expect(service.downloadUpdate(() => {})).rejects.toThrow('No Electron update')
   })
 
   it('applies manual updater proxy before checking and clears it when returning to system proxy', async () => {
